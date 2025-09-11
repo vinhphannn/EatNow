@@ -1,1 +1,15 @@
-export default function Home() {return (<main className="min-h-screen bg-gradient-to-br from-orange-50 to-red-50"><div className="container mx-auto px-4 py-16"><div className="text-center"><h1 className="text-6xl font-bold text-gray-900 mb-6">EatNow</h1><p className="text-xl text-gray-600 mb-8">�?t d? an nhanh tr?c tuy?n - Giao h�ng trong 30 ph�t</p><div className="flex justify-center space-x-4"><button className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-3 rounded-lg font-semibold transition-colors">�?t m�n ngay</button><button className="border border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-white px-8 py-3 rounded-lg font-semibold transition-colors">T�m nh� h�ng</button></div></div></div></main>);}
+// Trang chủ: điều hướng nhanh tới 4 khu vực chính (Admin, Nhà hàng, Khách hàng, Tài xế)
+export default function Home() {
+  return (
+    <main className="min-h-screen bg-gradient-to-br from-orange-50 to-red-50">
+      <div className="container mx-auto px-4 py-16">
+        <div className="text-center">
+          <h1 className="text-5xl font-extrabold text-gray-900 mb-4">EatNow</h1>
+          <p className="text-lg text-gray-700 mb-8">Đang chuyển đến trang quản trị...</p>
+          <script dangerouslySetInnerHTML={{ __html: 'window.location.href = "/admin";' }} />
+          <a className="underline" href="/admin">Nhấn vào đây nếu bạn không được chuyển hướng</a>
+        </div>
+      </div>
+    </main>
+  );
+}
