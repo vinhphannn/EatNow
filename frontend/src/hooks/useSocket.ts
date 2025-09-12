@@ -7,7 +7,8 @@ export function useSocket(url: string) {
 
   useEffect(() => {
     const newSocket = io(url, {
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
+      withCredentials: true,
     });
 
     newSocket.on('connect', () => {

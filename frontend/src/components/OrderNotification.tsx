@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useCustomerNotifications } from '@/hooks/useSocket';
+import { useCustomerNotifications } from '../hooks/useSocket';
 
 interface OrderUpdate {
   type: string;
