@@ -49,7 +49,16 @@ export class UserController {
     const userModel = this.conn.model('User');
     await userModel.updateOne({ _id: result.id }, { $set: { role: 'driver' } });
     const driverModel = this.conn.model('Driver');
-    await driverModel.create({ userId: result.id, name: body.name, phone: body.phone, status: 'inactive' });
+    await driverModel.create({ 
+      userId: result.id, 
+      name: body.name, 
+      phone: body.phone,
+      email: body.email,
+      licenseNumber: body.licenseNumber,
+      vehicleType: body.vehicleType,
+      vehicleNumber: body.vehicleNumber,
+      status: 'inactive' 
+    });
     return { id: result.id, email: body.email, role: 'driver' };
   }
 
@@ -77,6 +86,13 @@ export class UserController {
   @Patch('me/profile')
   async updateMe(@Req() req: any, @Body() body: any) {
     return this.userService.updateProfileById(req.user?.sub, body);
+  }
+
+  // Lấy thông tin profile driver (bao gồm thông tin driver)
+  @UseGuards(JwtAuthGuard)
+  @Get('me/driver-profile')
+  async getDriverProfile(@Req() req: any) {
+    return this.userService.getDriverProfileById(req.user?.sub);
   }
 }
 

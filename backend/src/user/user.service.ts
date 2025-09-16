@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { User, UserRole, UserDocument } from './schemas/user.schema';
 import { Restaurant, RestaurantDocument } from '../restaurant/schemas/restaurant.schema';
+import { Driver, DriverDocument } from '../driver/schemas/driver.schema';
 import * as bcrypt from 'bcryptjs';
 
 @Injectable()
@@ -10,6 +11,7 @@ export class UserService {
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     @InjectModel(Restaurant.name) private readonly restaurantModel: Model<RestaurantDocument>,
+    @InjectModel(Driver.name) private readonly driverModel: Model<DriverDocument>,
   ) {}
 
   // Đăng ký tài khoản khách hàng
@@ -134,6 +136,47 @@ export class UserService {
       return this.getProfileById(id);
     } catch (error) {
       throw new NotFoundException('User not found');
+    }
+  }
+
+  // Lấy thông tin profile driver (bao gồm thông tin driver)
+  async getDriverProfileById(userId: string) {
+    try {
+      const objectId = new Types.ObjectId(userId);
+      
+      // Lấy thông tin user
+      const user = await this.userModel.findById(objectId).lean();
+      if (!user) throw new NotFoundException('User not found');
+
+      // Lấy thông tin driver
+      const driver = await this.driverModel.findOne({ userId: objectId }).lean();
+      if (!driver) throw new NotFoundException('Driver profile not found');
+
+      return {
+        // Thông tin user
+        id: (user as any)._id,
+        email: (user as any).email,
+        role: (user as any).role,
+        name: (user as any).name,
+        phone: (user as any).phone,
+        avatarUrl: (user as any).avatarUrl,
+        createdAt: (user as any).createdAt,
+        updatedAt: (user as any).updatedAt,
+        
+        // Thông tin driver
+        licenseNumber: (driver as any).licenseNumber,
+        vehicleType: (driver as any).vehicleType,
+        vehicleNumber: (driver as any).vehicleNumber,
+        status: (driver as any).status,
+        rating: (driver as any).rating || 0,
+        ratingCount: (driver as any).ratingCount || 0,
+        totalDeliveries: (driver as any).totalDeliveries || 0,
+        isAvailable: (driver as any).isAvailable || false,
+        location: (driver as any).location,
+        lastLocationAt: (driver as any).lastLocationAt,
+      };
+    } catch (error) {
+      throw new NotFoundException('Driver profile not found');
     }
   }
 }

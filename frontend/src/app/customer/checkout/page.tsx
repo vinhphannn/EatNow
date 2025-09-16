@@ -48,6 +48,7 @@ export default function CheckoutPage() {
   const [selectedAddressId, setSelectedAddressId] = useState<string>('');
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [customerId, setCustomerId] = useState<string>('');
+  const [selectedAddress, setSelectedAddress] = useState<any>(null);
 
   useEffect(() => {
     loadCart();
@@ -74,17 +75,25 @@ export default function CheckoutPage() {
         setCustomerId(user.id);
       }
 
-      const response = await fetch(`${api}/cart`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok) {
-        const cart = await response.json();
-        setCartItems(cart);
+      // Load selected items from localStorage (from cart page)
+      const checkoutItems = localStorage.getItem('checkout_items');
+      if (checkoutItems) {
+        const items = JSON.parse(checkoutItems);
+        setCartItems(items);
       } else {
-        showToast('Không thể tải giỏ hàng', 'error');
+        // Fallback to API if no checkout items
+        const response = await fetch(`${api}/cart`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (response.ok) {
+          const cart = await response.json();
+          setCartItems(cart);
+        } else {
+          showToast('Không thể tải giỏ hàng', 'error');
+        }
       }
     } catch (error) {
       console.error('Load cart error:', error);
@@ -114,6 +123,7 @@ export default function CheckoutPage() {
         if (defaultAddress) {
           setSelectedAddressId(defaultAddress._id);
           setDeliveryAddress(defaultAddress.addressLine);
+          setSelectedAddress(defaultAddress);
         }
       }
     } catch (error) {
@@ -126,8 +136,9 @@ export default function CheckoutPage() {
   };
 
   const calculateDeliveryFee = () => {
-    const total = calculateTotal();
-    return total >= 100000 ? 0 : 15000; // Miễn phí ship từ 100k
+    // Count unique restaurants
+    const uniqueRestaurants = new Set(cartItems.map(item => item.restaurant.id));
+    return uniqueRestaurants.size * 15000; // 15k per restaurant
   };
 
   const calculateFinalTotal = () => {
@@ -146,12 +157,14 @@ export default function CheckoutPage() {
     if (address) {
       setSelectedAddressId(addressId);
       setDeliveryAddress(address.addressLine);
+      setSelectedAddress(address);
     }
   };
 
   const handleCustomAddress = () => {
     setSelectedAddressId('');
     setDeliveryAddress('');
+    setSelectedAddress(null);
   };
 
   const handlePlaceOrder = async () => {
@@ -173,31 +186,79 @@ export default function CheckoutPage() {
     setOrderLoading(true);
     try {
       const token = localStorage.getItem('eatnow_token');
-      const orderData = {
-        items: cartItems.map(item => ({
-          itemId: item.item.id,
-          quantity: item.quantity,
-          price: item.item.price
-        })),
-        paymentMethod,
-        deliveryAddress: deliveryAddress.trim(),
-        specialInstructions: specialInstructions.trim(),
-        total: calculateFinalTotal(),
-        deliveryFee: calculateDeliveryFee()
-      };
+      // Format delivery address based on selection
+      let formattedDeliveryAddress;
+      if (selectedAddress) {
+        // Use selected address with full details
+        formattedDeliveryAddress = {
+          label: selectedAddress.label || 'Địa chỉ giao hàng',
+          addressLine: selectedAddress.addressLine || deliveryAddress.trim(),
+          latitude: selectedAddress.latitude || 0,
+          longitude: selectedAddress.longitude || 0,
+          note: selectedAddress.note || ''
+        };
+      } else {
+        // Use custom address as string (fallback)
+        formattedDeliveryAddress = {
+          label: 'Địa chỉ giao hàng',
+          addressLine: deliveryAddress.trim(),
+          latitude: 0,
+          longitude: 0,
+          note: ''
+        };
+      }
 
-      const response = await fetch(`${api}/orders`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(orderData)
+      // Group items by restaurant
+      const groupedItems = cartItems.reduce((acc, item) => {
+        const restaurantId = item.restaurant.id;
+        if (!acc[restaurantId]) {
+          acc[restaurantId] = {
+            restaurant: item.restaurant,
+            items: []
+          };
+        }
+        acc[restaurantId].items.push(item);
+        return acc;
+      }, {} as Record<string, { restaurant: any, items: CartItem[] }>);
+
+      // Create separate orders for each restaurant
+      const orderPromises = Object.entries(groupedItems).map(async ([restaurantId, group]) => {
+        const restaurantSubtotal = group.items.reduce((sum, item) => sum + item.subtotal, 0);
+        const restaurantDeliveryFee = 15000; // 15k per restaurant
+        const restaurantTotal = restaurantSubtotal + restaurantDeliveryFee;
+
+        const orderData = {
+          items: group.items.map(item => ({
+            itemId: item.item.id,
+            quantity: item.quantity,
+            price: item.item.price
+          })),
+          paymentMethod,
+          deliveryAddress: formattedDeliveryAddress,
+          specialInstructions: specialInstructions.trim(),
+          total: restaurantSubtotal,
+          deliveryFee: restaurantDeliveryFee
+        };
+
+        const response = await fetch(`${api}/orders`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(orderData)
+        });
+
+        if (response.ok) {
+          return await response.json();
+        } else {
+          throw new Error(`Failed to create order for restaurant ${group.restaurant.name}`);
+        }
       });
 
-      if (response.ok) {
-        const order = await response.json();
-        showToast('Đặt hàng thành công! Nhà hàng đã được thông báo', 'success');
+      try {
+        const orders = await Promise.all(orderPromises);
+        showToast(`Đặt hàng thành công! Đã tạo ${orders.length} đơn hàng`, 'success');
         
         // Clear cart
         await fetch(`${api}/cart`, {
@@ -207,11 +268,13 @@ export default function CheckoutPage() {
           }
         });
 
-        // Redirect to order tracking
-        router.push(`/customer/orders/${order.id}`);
-      } else {
-        const error = await response.text();
-        console.error('Place order failed:', error);
+        // Clear checkout items
+        localStorage.removeItem('checkout_items');
+
+        // Redirect to orders page
+        router.push('/customer/orders');
+      } catch (error) {
+        console.error('Place orders failed:', error);
         showToast('Không thể đặt hàng. Vui lòng thử lại', 'error');
       }
     } catch (error) {

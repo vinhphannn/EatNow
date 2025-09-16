@@ -6,6 +6,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { Restaurant, RestaurantSchema } from '../restaurant/schemas/restaurant.schema';
 import { Item, ItemSchema } from '../restaurant/schemas/item.schema';
 import { User, UserSchema } from '../user/schemas/user.schema';
+import { Driver, DriverSchema } from '../driver/schemas/driver.schema';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { User, UserSchema } from '../user/schemas/user.schema';
       { name: Restaurant.name, schema: RestaurantSchema },
       { name: Item.name, schema: ItemSchema },
       { name: User.name, schema: UserSchema },
+      { name: Driver.name, schema: DriverSchema },
     ]),
   ],
   controllers: [DemoController],

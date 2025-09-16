@@ -5,6 +5,7 @@ import { Restaurant, RestaurantDocument } from '../restaurant/schemas/restaurant
 import { Item, ItemDocument } from '../restaurant/schemas/item.schema';
 import { User, UserDocument } from '../user/schemas/user.schema';
 import { UserRole } from '../user/schemas/user.schema';
+import { Driver, DriverDocument } from '../driver/schemas/driver.schema';
 import * as bcrypt from 'bcryptjs';
 
 @Injectable()
@@ -13,6 +14,7 @@ export class DemoService {
     @InjectModel(Restaurant.name) private readonly restaurantModel: Model<RestaurantDocument>,
     @InjectModel(Item.name) private readonly itemModel: Model<ItemDocument>,
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+    @InjectModel(Driver.name) private readonly driverModel: Model<DriverDocument>,
   ) {}
 
   // Seed dữ liệu mẫu tối thiểu: 1 nhà hàng, 4 món
@@ -346,6 +348,73 @@ export class DemoService {
     } catch (error) {
       console.error('Error getting restaurants with menu:', error);
       return [];
+    }
+  }
+
+  // Tạo demo driver để test
+  async createDemoDriver(): Promise<{ ok: boolean; message: string; driver?: any }> {
+    try {
+      // Check if demo driver already exists
+      const existingUser = await this.userModel.findOne({ email: 'demo@driver.com' });
+      let driverUserId;
+      
+      if (!existingUser) {
+        const hashedPassword = await bcrypt.hash('123456', 10);
+        const user = await this.userModel.create({
+          email: 'demo@driver.com',
+          password: hashedPassword,
+          name: 'Demo Driver',
+          phone: '0901234568',
+          role: UserRole.DRIVER,
+        });
+        driverUserId = user._id;
+      } else {
+        driverUserId = existingUser._id;
+      }
+
+      // Check if driver record already exists
+      const existingDriver = await this.driverModel.findOne({ userId: driverUserId });
+      let driver;
+      
+      if (!existingDriver) {
+        driver = await this.driverModel.create({
+          userId: driverUserId,
+          name: 'Demo Driver',
+          phone: '0901234568',
+          email: 'demo@driver.com',
+          licenseNumber: 'A123456789',
+          vehicleType: 'motorcycle',
+          vehicleNumber: '51A-12345',
+          status: 'inactive',
+          isAvailable: false,
+          location: [106.7009, 10.7769], // TP.HCM coordinates
+          locationType: 'Point',
+          lastLocationAt: new Date(),
+        });
+      } else {
+        driver = existingDriver;
+      }
+
+      return {
+        ok: true,
+        message: 'Demo driver created successfully',
+        driver: {
+          id: driver._id,
+          userId: driver.userId,
+          name: driver.name,
+          email: driver.email,
+          phone: driver.phone,
+          licenseNumber: driver.licenseNumber,
+          vehicleType: driver.vehicleType,
+          vehicleNumber: driver.vehicleNumber,
+        }
+      };
+    } catch (error) {
+      console.error('Error creating demo driver:', error);
+      return {
+        ok: false,
+        message: 'Failed to create demo driver: ' + error.message
+      };
     }
   }
 }

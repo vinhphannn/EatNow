@@ -55,8 +55,23 @@ export class Order {
   @Prop({ required: true })
   finalTotal: number;
 
-  @Prop({ required: true })
-  deliveryAddress: string;
+  @Prop({
+    type: {
+      label: { type: String, required: true },
+      addressLine: { type: String, required: true },
+      latitude: { type: Number, required: true },
+      longitude: { type: Number, required: true },
+      note: { type: String },
+    },
+    required: true,
+  })
+  deliveryAddress: {
+    label: string;
+    addressLine: string;
+    latitude: number;
+    longitude: number;
+    note?: string;
+  };
 
   @Prop({ default: '' })
   specialInstructions: string;
@@ -67,7 +82,7 @@ export class Order {
   @Prop({ enum: OrderStatus, default: OrderStatus.PENDING })
   status: OrderStatus;
 
-  @Prop({ type: Types.ObjectId, ref: 'User' })
+  @Prop({ type: Types.ObjectId, ref: 'Driver' })
   driverId?: Types.ObjectId;
 
   @Prop({ default: null })
@@ -76,8 +91,40 @@ export class Order {
   @Prop({ default: null })
   actualDeliveryTime?: Date;
 
+  // Distance calculation (in meters)
+  @Prop({ default: null })
+  distanceToRestaurant?: number;
+
+  @Prop({ default: null })
+  distanceToCustomer?: number;
+
+  // Driver assignment info
+  @Prop({ default: null })
+  assignedAt?: Date;
+
+  @Prop({ default: null })
+  driverRating?: number; // Hidden from driver
+
   @Prop({ unique: true, sparse: true })
   code?: string;
+
+  @Prop({
+    type: [
+      {
+        status: { type: String, required: true },
+        timestamp: { type: Date, required: true },
+        note: { type: String },
+        updatedBy: { type: String }, // 'system', 'restaurant', 'driver', 'customer'
+      },
+    ],
+    default: [],
+  })
+  trackingHistory?: Array<{
+    status: string;
+    timestamp: Date;
+    note?: string;
+    updatedBy?: string;
+  }>;
 }
 
 export const OrderSchema = SchemaFactory.createForClass(Order);

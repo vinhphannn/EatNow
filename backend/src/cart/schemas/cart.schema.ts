@@ -26,7 +26,8 @@ export class Cart {
 
 export const CartSchema = SchemaFactory.createForClass(Cart);
 
-// Indexes
+// Indexes for efficient queries
 CartSchema.index({ userId: 1, isActive: 1 });
 CartSchema.index({ userId: 1, restaurantId: 1, isActive: 1 });
 CartSchema.index({ itemId: 1 });
+CartSchema.index({ userId: 1, itemId: 1, isActive: 1 }, { unique: true }); // Prevent duplicate items

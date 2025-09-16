@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useToast } from '../../../../components/Toast';
+import { useCustomerNotifications } from '../../../../hooks/useSocket';
 
 interface Order {
   _id: string;
@@ -16,7 +17,13 @@ interface Order {
   total: number;
   deliveryFee: number;
   finalTotal: number;
-  deliveryAddress: string;
+  deliveryAddress: string | {
+    label: string;
+    addressLine: string;
+    latitude: number;
+    longitude: number;
+    note?: string;
+  };
   specialInstructions: string;
   paymentMethod: 'cash' | 'bank_transfer';
   status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
@@ -48,10 +55,58 @@ export default function OrderDetailPage() {
 
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
+  const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const token = useMemo(() => (typeof window !== 'undefined' ? localStorage.getItem('eatnow_token') : null), []);
+  useCustomerNotifications(token || undefined);
 
   useEffect(() => {
     if (params.id) {
       loadOrder(params.id as string);
+    }
+  }, [params.id]);
+
+  // Listen for order status updates
+  useEffect(() => {
+    const handleOrderStatusUpdate = (event: any) => {
+      console.log('Order status update received in order detail:', event.detail);
+      const { orderId, order: updatedOrder } = event.detail;
+      
+      // If this update is for the current order, update the state
+      if (orderId === params.id) {
+        if (updatedOrder) {
+          setOrder(updatedOrder);
+        } else {
+          // Reload the order if we don't have the full order data
+          loadOrder(orderId);
+        }
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('eatnow:order_status_update', handleOrderStatusUpdate);
+      return () => {
+        window.removeEventListener('eatnow:order_status_update', handleOrderStatusUpdate);
+      };
+    }
+  }, [params.id]);
+
+  // Listen for driver location updates
+  useEffect(() => {
+    const handleDriverLocationUpdate = (event: any) => {
+      if (event.detail.data.orderId === params.id) {
+        setDriverLocation({
+          latitude: event.detail.data.latitude,
+          longitude: event.detail.data.longitude,
+        });
+        console.log('Driver location updated:', event.detail.data);
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('eatnow:driver_location_update', handleDriverLocationUpdate);
+      return () => {
+        window.removeEventListener('eatnow:driver_location_update', handleDriverLocationUpdate);
+      };
     }
   }, [params.id]);
 
@@ -84,6 +139,21 @@ export default function OrderDetailPage() {
       setLoading(false);
     }
   };
+
+  // When an order update event is received, re-fetch details (simple approach: refocus)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.orderId && params.id === detail.orderId) {
+        loadOrder(detail.orderId);
+      } else if (params.id) {
+        // If unknown, still refresh to be safe
+        loadOrder(params.id as string);
+      }
+    };
+    window.addEventListener('eatnow:order_update', handler as EventListener);
+    return () => window.removeEventListener('eatnow:order_update', handler as EventListener);
+  }, [params.id]);
 
   const getStatusText = (status: string) => {
     const statusMap = {
@@ -258,7 +328,22 @@ export default function OrderDetailPage() {
                 <div className="space-y-3">
                   <div>
                     <h3 className="font-medium text-gray-900">Địa chỉ giao hàng</h3>
-                    <p className="text-gray-600">{order.deliveryAddress}</p>
+                    <p className="text-gray-600">
+                      {typeof order.deliveryAddress === 'string' 
+                        ? order.deliveryAddress 
+                        : order.deliveryAddress?.addressLine || 'Địa chỉ không xác định'
+                      }
+                    </p>
+                    {typeof order.deliveryAddress === 'object' && order.deliveryAddress?.label && (
+                      <p className="text-sm text-gray-500 mt-1">
+                        📍 {order.deliveryAddress.label}
+                      </p>
+                    )}
+                    {typeof order.deliveryAddress === 'object' && order.deliveryAddress?.note && (
+                      <p className="text-sm text-gray-500 mt-1">
+                        📝 {order.deliveryAddress.note}
+                      </p>
+                    )}
                   </div>
                   {order.specialInstructions && (
                     <div>

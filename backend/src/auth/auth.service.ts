@@ -23,7 +23,20 @@ export class AuthService {
   async login(email: string, password: string) {
     const u = await this.validateUser(email, password);
     const token = await this.jwt.signAsync({ sub: u.id, role: u.role, email: u.email });
-    return { access_token: token, user: u };
+    
+    // Lấy thông tin user đầy đủ từ database
+    const fullUser = await this.userModel.findById(u.id).lean();
+    
+    return { 
+      access_token: token, 
+      user: {
+        id: u.id,
+        email: u.email,
+        role: u.role,
+        name: (fullUser as any)?.name || (fullUser as any)?.fullName || u.email,
+        ...fullUser
+      }
+    };
   }
 }
 

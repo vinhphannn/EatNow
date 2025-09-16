@@ -21,18 +21,13 @@ export class ImageController {
 
   @Get(':id')
   async getImage(@Param('id') id: string, @Res() res: Response) {
-    const image = await this.imageService.getImage(id);
+    const image = await this.imageService.getImageUrl(id);
     if (!image) {
       throw new NotFoundException('Image not found');
     }
 
-    res.set({
-      'Content-Type': image.mimeType,
-      'Content-Length': image.data.length,
-      'Cache-Control': 'public, max-age=31536000', // 1 year cache
-    });
-
-    res.send(image.data);
+    // Redirect to cloud storage URL instead of serving binary data
+    res.redirect(image.url);
   }
 
   @Get(':id/info')

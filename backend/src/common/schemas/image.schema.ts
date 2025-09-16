@@ -18,16 +18,31 @@ export class Image {
   size: number; // Size in bytes
 
   @Prop({ required: true })
-  data: Buffer; // Binary data
+  url: string; // Cloud storage URL
+
+  @Prop()
+  cloudProvider?: string; // 'aws-s3', 'gcp', 'cloudinary', etc.
+
+  @Prop()
+  cloudKey?: string; // Key in cloud storage
 
   @Prop({ type: Types.ObjectId })
   uploadedBy?: any; // User ID who uploaded
 
   @Prop({ default: 'image' })
-  type: string; // 'image', 'avatar', 'menu-item', etc.
+  type: string; // 'image', 'avatar', 'menu-item', 'restaurant', etc.
 
   @Prop({ default: true })
   isActive: boolean;
+
+  @Prop()
+  altText?: string; // For accessibility
+
+  @Prop()
+  width?: number;
+
+  @Prop()
+  height?: number;
 }
 
 export const ImageSchema = SchemaFactory.createForClass(Image);

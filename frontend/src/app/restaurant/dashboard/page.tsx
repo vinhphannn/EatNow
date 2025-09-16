@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useRestaurantNotifications } from "../../../hooks/useSocket";
 
 export default function RestaurantDashboard() {
   const api = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
@@ -9,6 +10,8 @@ export default function RestaurantDashboard() {
   const [ordersToday, setOrdersToday] = useState<number | null>(null);
   const [newCustomers, setNewCustomers] = useState<number | null>(null);
   const [bestItem, setBestItem] = useState<string | null>(null);
+  // Connect to socket with JWT and listen for new orders (sound handled in hook)
+  useRestaurantNotifications(token || undefined, restaurantId || undefined);
 
   useEffect(() => {
     try {
@@ -16,6 +19,9 @@ export default function RestaurantDashboard() {
       const rid = typeof localStorage !== 'undefined' ? localStorage.getItem('eatnow_restaurant_id') : null;
       setToken(t);
       setRestaurantId(rid);
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        Notification.requestPermission().catch(() => {});
+      }
       // Placeholder: gọi API metrics khi có endpoint, hiện tại hiển thị fallback
       // Ví dụ (khi có BE): GET /restaurants/:id/metrics?range=today
     } catch {}

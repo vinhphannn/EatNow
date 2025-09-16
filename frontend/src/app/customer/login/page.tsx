@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { AuthManager } from '@/utils/authManager';
 
 export default function CustomerLoginPage() {
 	const api = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
@@ -41,8 +42,8 @@ export default function CustomerLoginPage() {
 				return;
 			}
 			if (typeof localStorage !== 'undefined') {
-				localStorage.setItem('eatnow_token', token);
-				localStorage.setItem('eatnow_user', JSON.stringify({ id: user.id || user._id || user?._id?.$oid, name: user.name || user.fullName || user.email, email: user.email, role: 'customer' }));
+				// Lưu auth riêng cho customer
+				AuthManager.setCustomerAuth(token, { id: user.id || user._id || user?._id?.$oid, name: user.name || user.fullName || user.email, email: user.email, role: 'customer' });
 			}
 			router.push('/customer');
 		} catch {

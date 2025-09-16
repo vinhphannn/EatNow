@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '../../../components/Toast';
+import { useCustomerNotifications } from '../../../hooks/useSocket';
 
 interface Order {
   _id: string;
@@ -16,7 +17,13 @@ interface Order {
   total: number;
   deliveryFee: number;
   finalTotal: number;
-  deliveryAddress: string;
+  deliveryAddress: string | {
+    label: string;
+    addressLine: string;
+    latitude: number;
+    longitude: number;
+    note?: string;
+  };
   specialInstructions: string;
   paymentMethod: 'cash' | 'bank_transfer';
   status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
@@ -40,9 +47,28 @@ export default function OrdersPage() {
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'pending' | 'completed'>('pending');
+  const token = useMemo(() => (typeof window !== 'undefined' ? localStorage.getItem('eatnow_token') : null), []);
+  useCustomerNotifications(token || undefined);
 
   useEffect(() => {
     loadOrders();
+  }, []);
+
+  // Listen for order status updates
+  useEffect(() => {
+    const handleOrderStatusUpdate = (event: any) => {
+      console.log('Order status update received in orders page:', event.detail);
+      // Reload orders to get updated status
+      loadOrders();
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('eatnow:order_status_update', handleOrderStatusUpdate);
+      return () => {
+        window.removeEventListener('eatnow:order_status_update', handleOrderStatusUpdate);
+      };
+    }
   }, []);
 
   const loadOrders = async () => {
@@ -72,6 +98,25 @@ export default function OrdersPage() {
       setLoading(false);
     }
   };
+
+  // Filter orders based on active tab
+  const filteredOrders = orders.filter(order => {
+    if (activeTab === 'pending') {
+      return ['pending', 'confirmed', 'preparing', 'ready'].includes(order.status);
+    } else {
+      return ['delivered', 'cancelled'].includes(order.status);
+    }
+  });
+
+  // Refresh list when receiving realtime updates
+  useEffect(() => {
+    const handler = (e: Event) => {
+      // Optional: can inspect (e as CustomEvent).detail to update specific order
+      loadOrders();
+    };
+    window.addEventListener('eatnow:order_update', handler as EventListener);
+    return () => window.removeEventListener('eatnow:order_update', handler as EventListener);
+  }, []);
 
   const getStatusText = (status: string) => {
     const statusMap = {
@@ -128,7 +173,35 @@ export default function OrdersPage() {
         <div className="max-w-4xl mx-auto">
           <h1 className="text-3xl font-bold text-gray-900 mb-8">Đơn hàng của tôi</h1>
 
-          {orders.length === 0 ? (
+          {/* Tabs */}
+          <div className="mb-8">
+            <div className="border-b border-gray-200">
+              <nav className="-mb-px flex space-x-8">
+                <button
+                  onClick={() => setActiveTab('pending')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'pending'
+                      ? 'border-orange-500 text-orange-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Đơn chờ giao ({orders.filter(o => ['pending', 'confirmed', 'preparing', 'ready'].includes(o.status)).length})
+                </button>
+                <button
+                  onClick={() => setActiveTab('completed')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'completed'
+                      ? 'border-orange-500 text-orange-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Đơn đã hoàn thành ({orders.filter(o => ['delivered', 'cancelled'].includes(o.status)).length})
+                </button>
+              </nav>
+            </div>
+          </div>
+
+          {filteredOrders.length === 0 ? (
             <div className="text-center py-12">
               <div className="text-6xl mb-4">📦</div>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">Chưa có đơn hàng nào</h2>
@@ -142,7 +215,7 @@ export default function OrdersPage() {
             </div>
           ) : (
             <div className="space-y-6">
-              {orders.map((order) => (
+              {filteredOrders.map((order) => (
                 <div key={order._id} className="bg-white rounded-xl border p-6 shadow-sm">
                   <div className="flex items-center justify-between mb-4">
                     <div>
@@ -170,7 +243,12 @@ export default function OrdersPage() {
                     
                     <div>
                       <h4 className="font-medium text-gray-900 mb-2">Giao đến</h4>
-                      <p className="text-gray-600">{order.deliveryAddress}</p>
+                      <p className="text-gray-600">
+                        {typeof order.deliveryAddress === 'string' 
+                          ? order.deliveryAddress 
+                          : order.deliveryAddress?.addressLine || 'Địa chỉ không xác định'
+                        }
+                      </p>
                       {order.specialInstructions && (
                         <p className="text-sm text-gray-500 mt-1">
                           Ghi chú: {order.specialInstructions}

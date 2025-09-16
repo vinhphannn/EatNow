@@ -17,7 +17,13 @@ interface Order {
   total: number;
   deliveryFee: number;
   finalTotal: number;
-  deliveryAddress: string;
+  deliveryAddress: string | {
+    label: string;
+    addressLine: string;
+    latitude: number;
+    longitude: number;
+    note?: string;
+  };
   specialInstructions: string;
   paymentMethod: 'cash' | 'bank_transfer';
   status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
@@ -44,11 +50,34 @@ export default function RestaurantOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
   const [restaurantId, setRestaurantId] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<'in-progress' | 'completed'>('in-progress');
+  
+  // Setup restaurant notifications
+  const token = typeof window !== 'undefined' ? localStorage.getItem('eatnow_token') : null;
+  const { socket, connected } = useRestaurantNotifications(token || undefined, restaurantId);
 
   // Get restaurant ID from API
   useEffect(() => {
     loadRestaurantId();
   }, []);
+
+  // Listen for order updates
+  useEffect(() => {
+    const handleOrderUpdate = (event: any) => {
+      console.log('Order update received in restaurant orders:', event.detail);
+      // Reload orders to get updated data
+      if (restaurantId) {
+        loadOrders();
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('eatnow:order_update', handleOrderUpdate);
+      return () => {
+        window.removeEventListener('eatnow:order_update', handleOrderUpdate);
+      };
+    }
+  }, [restaurantId]);
 
   const loadRestaurantId = async () => {
     const token = localStorage.getItem('eatnow_token');
@@ -70,24 +99,24 @@ export default function RestaurantOrdersPage() {
     }
   };
 
-  // WebSocket notifications
-  const { socket, connected } = useRestaurantNotifications(restaurantId);
 
   useEffect(() => {
     if (socket) {
-      socket.on('new_order', (data) => {
-        showToast(`Có đơn hàng mới! Tổng: ${data.order.total.toLocaleString('vi-VN')}đ`, 'success');
-        loadOrders(); // Reload orders
-      });
-
-      socket.on('order_update', (data) => {
-        showToast(`Đơn hàng #${data.orderId.slice(-8)} đã được cập nhật`, 'info');
-        loadOrders(); // Reload orders
-      });
+      const onNew = (data: any) => {
+        showToast(`Có đơn hàng mới! Tổng: ${Number(data.order.total || 0).toLocaleString('vi-VN')}đ`, 'success');
+        loadOrders();
+      };
+      const onUpd = (data: any) => {
+        const short = String(data.orderId || '').slice(-8).toUpperCase();
+        showToast(`Đơn hàng #${short} đã được cập nhật`, 'info');
+        loadOrders();
+      };
+      socket.on('new_order', onNew);
+      socket.on('order_update', onUpd);
 
       return () => {
-        socket.off('new_order');
-        socket.off('order_update');
+        socket.off('new_order', onNew);
+        socket.off('order_update', onUpd);
       };
     }
   }, [socket]);
@@ -124,10 +153,21 @@ export default function RestaurantOrdersPage() {
     }
   };
 
+  // Filter orders based on active tab
+  const filteredOrders = orders.filter(order => {
+    if (activeTab === 'in-progress') {
+      return ['pending', 'confirmed', 'preparing', 'ready'].includes(order.status);
+    } else {
+      return ['delivered', 'cancelled'].includes(order.status);
+    }
+  });
+
   const updateOrderStatus = async (orderId: string, newStatus: string) => {
     setUpdating(orderId);
     try {
       const token = localStorage.getItem('eatnow_token');
+      // Stop ring immediately for better UX
+      try { window.dispatchEvent(new CustomEvent('eatnow:stop_ring')); } catch {}
       const response = await fetch(`${api}/orders/${orderId}/status`, {
         method: 'PUT',
         headers: {
@@ -226,7 +266,35 @@ export default function RestaurantOrdersPage() {
         <div className="max-w-6xl mx-auto">
           <h1 className="text-3xl font-bold text-gray-900 mb-8">Quản lý đơn hàng</h1>
 
-          {orders.length === 0 ? (
+          {/* Tabs */}
+          <div className="mb-8">
+            <div className="border-b border-gray-200">
+              <nav className="-mb-px flex space-x-8">
+                <button
+                  onClick={() => setActiveTab('in-progress')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'in-progress'
+                      ? 'border-orange-500 text-orange-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Đơn đang thực hiện ({orders.filter(o => ['pending', 'confirmed', 'preparing', 'ready'].includes(o.status)).length})
+                </button>
+                <button
+                  onClick={() => setActiveTab('completed')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'completed'
+                      ? 'border-orange-500 text-orange-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Đơn đã hoàn thành ({orders.filter(o => ['delivered', 'cancelled'].includes(o.status)).length})
+                </button>
+              </nav>
+            </div>
+          </div>
+
+          {filteredOrders.length === 0 ? (
             <div className="text-center py-12">
               <div className="text-6xl mb-4">📦</div>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">Chưa có đơn hàng nào</h2>
@@ -234,7 +302,7 @@ export default function RestaurantOrdersPage() {
             </div>
           ) : (
             <div className="space-y-6">
-              {orders.map((order) => (
+              {filteredOrders.map((order) => (
                 <div key={order._id} className="bg-white rounded-xl border p-6 shadow-sm">
                   <div className="flex items-center justify-between mb-4">
                     <div>
@@ -265,7 +333,12 @@ export default function RestaurantOrdersPage() {
                     {/* Delivery Info */}
                     <div>
                       <h4 className="font-medium text-gray-900 mb-2">Giao đến</h4>
-                      <p className="text-gray-600">{order.deliveryAddress}</p>
+                      <p className="text-gray-600">
+                        {typeof order.deliveryAddress === 'string' 
+                          ? order.deliveryAddress 
+                          : order.deliveryAddress?.addressLine || 'Địa chỉ không xác định'
+                        }
+                      </p>
                       {order.specialInstructions && (
                         <p className="text-sm text-gray-500 mt-1">
                           Ghi chú: {order.specialInstructions}

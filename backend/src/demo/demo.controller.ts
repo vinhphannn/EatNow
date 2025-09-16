@@ -17,6 +17,12 @@ export class DemoController {
   async restaurants() {
     return this.demoService.getRestaurantsWithMenu();
   }
+
+  // API: tạo demo driver để test
+  @Post('create-driver')
+  async createDemoDriver() {
+    return this.demoService.createDemoDriver();
+  }
 }
 
 

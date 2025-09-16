@@ -1,11 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { Driver, DriverDocument } from '../driver/schemas/driver.schema';
 import { Order, OrderDocument, OrderStatus } from './schemas/order.schema';
 import { Cart, CartDocument } from '../cart/schemas/cart.schema';
 import { Item, ItemDocument } from '../restaurant/schemas/item.schema';
 import { Restaurant, RestaurantDocument } from '../restaurant/schemas/restaurant.schema';
 import { NotificationGateway } from '../notification/notification.gateway';
+import { DistanceService } from '../common/services/distance.service';
+import { OrderAssignmentService } from './services/order-assignment.service';
 
 @Injectable()
 export class OrderService {
@@ -14,13 +17,51 @@ export class OrderService {
     @InjectModel(Cart.name) private readonly cartModel: Model<CartDocument>,
     @InjectModel(Item.name) private readonly itemModel: Model<ItemDocument>,
     @InjectModel(Restaurant.name) private readonly restaurantModel: Model<RestaurantDocument>,
+    @InjectModel(Driver.name) private readonly driverModel: Model<DriverDocument>,
     private readonly notificationGateway: NotificationGateway,
+    private readonly distanceService: DistanceService,
+    private readonly orderAssignmentService: OrderAssignmentService,
   ) {}
 
   private generateOrderCode(): string {
     const timestamp = Date.now().toString().slice(-6);
     const random = Math.random().toString(36).substring(2, 5).toUpperCase();
     return `ORD${timestamp}${random}`;
+  }
+
+  private formatDeliveryAddress(deliveryAddress: any) {
+    // If deliveryAddress is already in the correct format
+    if (deliveryAddress && typeof deliveryAddress === 'object' && 
+        deliveryAddress.label && deliveryAddress.addressLine && 
+        deliveryAddress.latitude !== undefined && deliveryAddress.longitude !== undefined) {
+      return {
+        label: deliveryAddress.label,
+        addressLine: deliveryAddress.addressLine,
+        latitude: Number(deliveryAddress.latitude),
+        longitude: Number(deliveryAddress.longitude),
+        note: deliveryAddress.note || '',
+      };
+    }
+
+    // If deliveryAddress is a string (legacy format), try to parse it
+    if (typeof deliveryAddress === 'string') {
+      return {
+        label: 'Địa chỉ giao hàng',
+        addressLine: deliveryAddress,
+        latitude: 0, // Default values - should be provided by frontend
+        longitude: 0,
+        note: '',
+      };
+    }
+
+    // Default fallback
+    return {
+      label: 'Địa chỉ giao hàng',
+      addressLine: 'Địa chỉ không xác định',
+      latitude: 0,
+      longitude: 0,
+      note: '',
+    };
   }
 
   async createOrder(customerId: string, orderData: any) {
@@ -51,6 +92,35 @@ export class OrderService {
       };
     });
 
+    // Validate and format delivery address
+    const formattedDeliveryAddress = this.formatDeliveryAddress(deliveryAddress);
+
+    // Get restaurant location for distance calculation
+    const restaurant = await this.restaurantModel.findById(restaurantId);
+    if (!restaurant) {
+      throw new NotFoundException('Restaurant not found');
+    }
+
+    // Calculate distances (mock restaurant coordinates for now)
+    const restaurantLat = restaurant.latitude || 10.7769; // Mock coordinates
+    const restaurantLon = restaurant.longitude || 106.7009;
+    
+    const distanceToRestaurant = this.distanceService.calculateDistance(
+      restaurantLat,
+      restaurantLon,
+      formattedDeliveryAddress.latitude,
+      formattedDeliveryAddress.longitude
+    );
+
+    const distanceToCustomer = distanceToRestaurant; // Same distance for now
+
+    // Calculate estimated delivery time
+    const estimatedDeliveryTime = new Date();
+    estimatedDeliveryTime.setMinutes(
+      estimatedDeliveryTime.getMinutes() + 
+      this.distanceService.calculateEstimatedDeliveryTime(distanceToRestaurant / 1000)
+    );
+
     // Create order
     const order = new this.orderModel({
       customerId: new Types.ObjectId(customerId),
@@ -59,14 +129,30 @@ export class OrderService {
       total,
       deliveryFee,
       finalTotal: total + deliveryFee,
-      deliveryAddress,
-      specialInstructions,
+      deliveryAddress: formattedDeliveryAddress,
+      specialInstructions: specialInstructions || '',
       paymentMethod,
       status: OrderStatus.PENDING,
       code: this.generateOrderCode(),
+      distanceToRestaurant,
+      distanceToCustomer,
+      estimatedDeliveryTime,
+      trackingHistory: [{
+        status: OrderStatus.PENDING,
+        timestamp: new Date(),
+        note: 'Đơn hàng đã được tạo',
+        updatedBy: 'customer'
+      }],
     });
 
     const savedOrder = await order.save();
+
+    // Try to assign order to best available driver
+    try {
+      await this.orderAssignmentService.assignOrderToDriver(savedOrder._id.toString());
+    } catch (error) {
+      console.error('Failed to assign order to driver:', error);
+    }
 
     // Clear customer's cart
     await this.cartModel.deleteMany({ userId: new Types.ObjectId(customerId) });
@@ -134,6 +220,16 @@ export class OrderService {
       updateData.actualDeliveryTime = new Date();
     }
 
+    // Add tracking history entry
+    const trackingEntry = {
+      status: status,
+      timestamp: new Date(),
+      note: this.getStatusNote(status),
+      updatedBy: 'restaurant'
+    };
+
+    updateData.$push = { trackingHistory: trackingEntry };
+
     const updatedOrder = await this.orderModel.findByIdAndUpdate(
       orderId,
       updateData,
@@ -153,6 +249,18 @@ export class OrderService {
     }
 
     return updatedOrder;
+  }
+
+  private getStatusNote(status: OrderStatus): string {
+    const statusNotes = {
+      [OrderStatus.PENDING]: 'Đơn hàng đang chờ xác nhận',
+      [OrderStatus.CONFIRMED]: 'Đơn hàng đã được xác nhận',
+      [OrderStatus.PREPARING]: 'Đơn hàng đang được chuẩn bị',
+      [OrderStatus.READY]: 'Đơn hàng đã sẵn sàng giao',
+      [OrderStatus.DELIVERED]: 'Đơn hàng đã được giao thành công',
+      [OrderStatus.CANCELLED]: 'Đơn hàng đã bị hủy'
+    };
+    return statusNotes[status] || 'Trạng thái đã được cập nhật';
   }
 
   async findRestaurantByOwnerId(ownerId: string) {

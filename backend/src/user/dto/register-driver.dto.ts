@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, MinLength, IsOptional, IsString } from 'class-validator';
+import { IsEmail, IsNotEmpty, MinLength, IsOptional, IsString, IsEnum } from 'class-validator';
 
 export class RegisterDriverDto {
   @ApiProperty({ example: 'driver@example.com' })
@@ -20,6 +20,20 @@ export class RegisterDriverDto {
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @ApiProperty({ example: 'A123456789' })
+  @IsString()
+  @IsNotEmpty()
+  licenseNumber: string;
+
+  @ApiProperty({ example: 'motorcycle', enum: ['motorcycle', 'bicycle', 'car'] })
+  @IsEnum(['motorcycle', 'bicycle', 'car'])
+  vehicleType: string;
+
+  @ApiProperty({ example: '51A-12345' })
+  @IsString()
+  @IsNotEmpty()
+  vehicleNumber: string;
 }
 
 

@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { AuthManager } from '@/utils/authManager';
 
 export default function RestaurantLoginPage() {
 	const router = useRouter();
@@ -29,15 +30,15 @@ export default function RestaurantLoginPage() {
 					return;
 				}
 				if (typeof localStorage !== 'undefined') {
-					localStorage.setItem('eatnow_token', token);
-					if (data?.user) localStorage.setItem('eatnow_user', JSON.stringify(data.user));
+					// Lưu auth riêng cho restaurant
+					AuthManager.setRestaurantAuth(token, data.user);
 					try {
 						const userId = data?.user?.id;
 						if (userId) {
 							const r = await fetch(`${api}/restaurants?ownerUserId=${userId}`, { headers: { Authorization: `Bearer ${token}` } });
 							const list = r.ok ? await r.json() : [];
 							const first = Array.isArray(list) && list.length ? list[0] : null;
-							if (first?.id) localStorage.setItem('eatnow_restaurant_id', first.id);
+							if (first?.id) localStorage.setItem('restaurant_id', first.id);
 						}
 					} catch {}
 				}

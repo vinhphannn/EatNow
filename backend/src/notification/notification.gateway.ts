@@ -1,11 +1,27 @@
 import { WebSocketGateway, WebSocketServer, OnGatewayConnection, OnGatewayDisconnect, SubscribeMessage } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Injectable } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types } from 'mongoose';
+import { Restaurant, RestaurantDocument } from '../restaurant/schemas/restaurant.schema';
 
 @Injectable()
 @WebSocketGateway({
   cors: {
-    origin: ['http://localhost:3001', 'http://localhost:3000'],
+    origin: (origin, callback) => {
+      const env = process.env.CORS_ORIGIN || '';
+      const allowed = env
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      // Allow if no origin (same-origin) or listed in CORS_ORIGIN, always allow localhost for dev
+      if (!origin || allowed.includes(origin) || /localhost:\d+$/.test(origin)) {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
+    },
     methods: ['GET','POST','OPTIONS'],
     credentials: true,
   },
@@ -17,17 +33,64 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
   private restaurantRooms = new Map<string, string>(); // restaurantId -> socketId
   private customerRooms = new Map<string, string>(); // customerId -> socketId
 
-  handleConnection(client: Socket) {
-    console.log(`Client connected: ${client.id}`);
+  constructor(
+    private readonly jwtService: JwtService,
+    @InjectModel(Restaurant.name) private readonly restaurantModel: Model<RestaurantDocument>,
+  ) {}
+
+  async handleConnection(client: Socket) {
+    try {
+      const tokenFromAuth = (client.handshake as any)?.auth?.token as string | undefined;
+      const headerAuth = client.handshake.headers['authorization'] as string | undefined;
+      const token = tokenFromAuth || (headerAuth && headerAuth.startsWith('Bearer ') ? headerAuth.substring(7) : undefined);
+
+      if (!token) {
+        console.warn(`Socket ${client.id} missing auth token - disconnecting`);
+        client.disconnect(true);
+        return;
+      }
+
+      const payload: any = await this.jwtService.verifyAsync(token);
+      const userId: string = String(payload.sub || payload.id);
+      const role: string | undefined = payload.role;
+
+      // Store user info in socket for cleanup
+      (client as any).userId = userId;
+      (client as any).role = role;
+
+      // Clean up any existing connections for this user
+      this.cleanupUserConnections(userId);
+
+      // Join rooms based on role
+      if (role === 'restaurant' || role === 'owner' || role === 'admin_restaurant') {
+        // Find restaurant by owner user id
+        const restaurant = await this.restaurantModel.findOne({ ownerUserId: new Types.ObjectId(userId) }).lean();
+        if (restaurant?._id) {
+          this.joinRestaurantRoom(client, String(restaurant._id));
+        }
+      } else if (role === 'customer' || role === 'admin') {
+        // Only join customer room for customers and admins
+        this.joinCustomerRoom(client, userId);
+      }
+
+      console.log(`Client connected: ${client.id} user=${userId} role=${role}`);
+    } catch (err) {
+      console.warn(`Socket ${client.id} auth error - disconnecting`, err?.message || err);
+      client.disconnect(true);
+    }
   }
 
   handleDisconnect(client: Socket) {
-    console.log(`Client disconnected: ${client.id}`);
+    const userId = (client as any).userId;
+    const role = (client as any).role;
+    
+    console.log(`Client disconnected: ${client.id} user=${userId} role=${role}`);
     
     // Remove from restaurant rooms
     for (const [restaurantId, socketId] of this.restaurantRooms.entries()) {
       if (socketId === client.id) {
         this.restaurantRooms.delete(restaurantId);
+        console.log(`Restaurant ${restaurantId} left room`);
         break;
       }
     }
@@ -36,7 +99,22 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
     for (const [customerId, socketId] of this.customerRooms.entries()) {
       if (socketId === client.id) {
         this.customerRooms.delete(customerId);
+        console.log(`Customer ${customerId} left room`);
         break;
+      }
+    }
+  }
+
+  // Clean up existing connections for a user
+  private cleanupUserConnections(userId: string) {
+    // Find and disconnect existing connections for this user
+    const connectedClients = Array.from(this.server.sockets.sockets.values());
+    
+    for (const socket of connectedClients) {
+      const socketUserId = (socket as any).userId;
+      if (socketUserId === userId) {
+        console.log(`Cleaning up existing connection for user ${userId}: ${socket.id}`);
+        socket.disconnect(true);
       }
     }
   }
@@ -104,6 +182,19 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
 
   // Notify customer about order status update
   notifyCustomer(customerId: string, orderId: string, status: string, order?: any) {
+    this.server.to(`customer_${customerId}`).emit('order_status_update', {
+      type: 'order_status_update',
+      message: this.getStatusMessage(status),
+      orderId: orderId,
+      status: status,
+      order: order,
+      timestamp: new Date().toISOString()
+    });
+    console.log(`Notified customer ${customerId} about order ${orderId} status: ${status}`);
+  }
+
+  // Get user-friendly status message
+  private getStatusMessage(status: string): string {
     const statusMessages = {
       'pending': 'Đơn hàng đang chờ xác nhận',
       'confirmed': 'Đơn hàng đã được xác nhận',
@@ -112,15 +203,30 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
       'delivered': 'Đơn hàng đã được giao',
       'cancelled': 'Đơn hàng đã bị hủy'
     };
-
-    this.server.to(`customer_${customerId}`).emit('order_update', {
-      type: 'order_update',
-      message: statusMessages[status] || 'Trạng thái đơn hàng đã được cập nhật',
-      orderId: orderId,
-      status: status,
-      order: order,
-      timestamp: new Date().toISOString()
-    });
-    console.log(`Notified customer ${customerId} about order update: ${status}`);
+    return statusMessages[status] || 'Trạng thái đơn hàng đã được cập nhật';
   }
+
+  /**
+   * Send driver location update to customer
+   */
+  sendLocationUpdate(customerId: string, locationData: {
+    driverId: string;
+    latitude: number;
+    longitude: number;
+    orderId: string;
+    timestamp: Date;
+  }): void {
+    const socketId = this.customerRooms.get(customerId);
+    if (socketId) {
+      this.server.to(socketId).emit('driver_location_update', {
+        type: 'driver_location_update',
+        data: locationData,
+        timestamp: new Date()
+      });
+      console.log(`Sent driver location update to customer ${customerId}`);
+    } else {
+      console.log(`Customer ${customerId} not connected to WebSocket`);
+    }
+  }
+
 }
