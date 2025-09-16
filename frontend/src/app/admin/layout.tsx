@@ -1,5 +1,7 @@
+"use client";
+
 import type { ReactNode } from "react";
-import AdminNavBar from "../../components/nav/AdminNavBar";
+import { AdminNavBar } from "../../components";
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
 	return (

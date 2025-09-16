@@ -1,26 +1,30 @@
-import type { Metadata } from "next";
+"use client";
+
 import { Inter } from "next/font/google";
 import "./globals.css";
-import Footer from "../components/Footer";
+import { Footer, ToastProvider, AppLoadingProvider } from "../components";
 import { SocketCleanupProvider } from "../components/SocketCleanupProvider";
+import { APP_CONFIG } from "../config";
 
 // Phông chữ Inter dùng cho giao diện tiếng Việt
 const inter = Inter({ subsets: ["latin", "latin-ext", "vietnamese"] as any });
 
-// Thông tin SEO cơ bản cho ứng dụng
-export const metadata: Metadata = {
-	title: "EatNow - Đặt đồ ăn nhanh trực tuyến",
-	description: "Nền tảng đặt đồ ăn trực tuyến hàng đầu Việt Nam",
-};
-
-// Layout gốc cho toàn bộ ứng dụng Next.js (App Router)
+// Layout gốc cho toàn bộ ứng dụng Next.js (App Router) - Client Side
 export default function RootLayout({ children }: { children: React.ReactNode }) {
 	return (
-		<html lang="vi">
-			<body className={inter.className}>
+		<html lang="vi" className={inter.className}>
+			<head>
+				<title>{`${APP_CONFIG.NAME} - ${APP_CONFIG.DESCRIPTION}`}</title>
+				<meta name="description" content={APP_CONFIG.DESCRIPTION} />
+			</head>
+			<body>
 				<SocketCleanupProvider>
-					{children}
-					<Footer />
+					<AppLoadingProvider>
+						<ToastProvider>
+							{children}
+							<Footer />
+						</ToastProvider>
+					</AppLoadingProvider>
 				</SocketCleanupProvider>
 			</body>
 		</html>

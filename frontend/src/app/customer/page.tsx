@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { useToast } from "../../components/Toast";
+import { useToast } from "../../components";
 
 interface Restaurant {
   id: string;

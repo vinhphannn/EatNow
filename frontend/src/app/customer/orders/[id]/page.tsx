@@ -1,9 +1,14 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { useToast } from '../../../../components/Toast';
-import { useCustomerNotifications } from '../../../../hooks/useSocket';
+import { useToast } from '../../../../components';
+import { useOrder } from '../../../../hooks/useApi';
+
+// Client-side rendering for sensitive order data
+export const dynamicParams = true;
+export const dynamic = 'force-dynamic';
+export const revalidate = 0; // No caching for sensitive data
 
 interface Order {
   _id: string;
@@ -17,13 +22,7 @@ interface Order {
   total: number;
   deliveryFee: number;
   finalTotal: number;
-  deliveryAddress: string | {
-    label: string;
-    addressLine: string;
-    latitude: number;
-    longitude: number;
-    note?: string;
-  };
+  deliveryAddress: string;
   specialInstructions: string;
   paymentMethod: 'cash' | 'bank_transfer';
   status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
@@ -50,110 +49,51 @@ interface Order {
 export default function OrderDetailPage() {
   const router = useRouter();
   const params = useParams();
-  const api = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
   const { showToast, ToastContainer } = useToast();
 
-  const [order, setOrder] = useState<Order | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  const token = useMemo(() => (typeof window !== 'undefined' ? localStorage.getItem('eatnow_token') : null), []);
-  useCustomerNotifications(token || undefined);
-
+  // Get token from localStorage
+  const [token, setToken] = useState<string | null>(null);
+  const [orderId, setOrderId] = useState<string | null>(null);
+  
   useEffect(() => {
-    if (params.id) {
-      loadOrder(params.id as string);
+    const storedToken = localStorage.getItem('eatnow_token');
+    setToken(storedToken);
+    
+    // Get order ID from params
+    if (params?.id && typeof params.id === 'string') {
+      setOrderId(params.id);
     }
-  }, [params.id]);
+  }, [params]);
 
-  // Listen for order status updates
+  // Sử dụng optimized hook cho order data
+  const { data: order, loading, error, refetch } = useOrder(orderId || '', token);
+
+  // Handle authentication and order ID validation
   useEffect(() => {
-    const handleOrderStatusUpdate = (event: any) => {
-      console.log('Order status update received in order detail:', event.detail);
-      const { orderId, order: updatedOrder } = event.detail;
-      
-      // If this update is for the current order, update the state
-      if (orderId === params.id) {
-        if (updatedOrder) {
-          setOrder(updatedOrder);
-        } else {
-          // Reload the order if we don't have the full order data
-          loadOrder(orderId);
-        }
-      }
-    };
-
-    if (typeof window !== 'undefined') {
-      window.addEventListener('eatnow:order_status_update', handleOrderStatusUpdate);
-      return () => {
-        window.removeEventListener('eatnow:order_status_update', handleOrderStatusUpdate);
-      };
-    }
-  }, [params.id]);
-
-  // Listen for driver location updates
-  useEffect(() => {
-    const handleDriverLocationUpdate = (event: any) => {
-      if (event.detail.data.orderId === params.id) {
-        setDriverLocation({
-          latitude: event.detail.data.latitude,
-          longitude: event.detail.data.longitude,
-        });
-        console.log('Driver location updated:', event.detail.data);
-      }
-    };
-
-    if (typeof window !== 'undefined') {
-      window.addEventListener('eatnow:driver_location_update', handleDriverLocationUpdate);
-      return () => {
-        window.removeEventListener('eatnow:driver_location_update', handleDriverLocationUpdate);
-      };
-    }
-  }, [params.id]);
-
-  const loadOrder = async (orderId: string) => {
-    const token = localStorage.getItem('eatnow_token');
     if (!token) {
+      showToast('Vui lòng đăng nhập để xem đơn hàng', 'error');
       router.push('/customer/login');
       return;
     }
-
-    try {
-      const response = await fetch(`${api}/orders/${orderId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok) {
-        const orderData = await response.json();
-        setOrder(orderData);
-      } else {
-        showToast('Không thể tải chi tiết đơn hàng', 'error');
-        router.push('/customer/orders');
-      }
-    } catch (error) {
-      console.error('Load order error:', error);
-      showToast('Có lỗi xảy ra khi tải chi tiết đơn hàng', 'error');
+    
+    if (!orderId) {
+      showToast('Không tìm thấy ID đơn hàng', 'error');
       router.push('/customer/orders');
-    } finally {
-      setLoading(false);
+      return;
     }
-  };
+  }, [token, orderId, showToast, router]);
 
-  // When an order update event is received, re-fetch details (simple approach: refocus)
+  // Handle errors
   useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.orderId && params.id === detail.orderId) {
-        loadOrder(detail.orderId);
-      } else if (params.id) {
-        // If unknown, still refresh to be safe
-        loadOrder(params.id as string);
+    if (error) {
+      if (error.message?.includes('401')) {
+        showToast('Phiên đăng nhập đã hết hạn', 'error');
+        router.push('/customer/login');
+      } else {
+        showToast('Không thể tải thông tin đơn hàng', 'error');
       }
-    };
-    window.addEventListener('eatnow:order_update', handler as EventListener);
-    return () => window.removeEventListener('eatnow:order_update', handler as EventListener);
-  }, [params.id]);
+    }
+  }, [error, showToast, router]);
 
   const getStatusText = (status: string) => {
     const statusMap = {
@@ -203,7 +143,7 @@ export default function OrderDetailPage() {
     return descriptions[status as keyof typeof descriptions] || '';
   };
 
-  if (loading) {
+  if (loading || !orderId) {
     return (
       <main className="min-h-screen bg-gray-50">
         <div className="container mx-auto px-4 py-10">
@@ -328,22 +268,7 @@ export default function OrderDetailPage() {
                 <div className="space-y-3">
                   <div>
                     <h3 className="font-medium text-gray-900">Địa chỉ giao hàng</h3>
-                    <p className="text-gray-600">
-                      {typeof order.deliveryAddress === 'string' 
-                        ? order.deliveryAddress 
-                        : order.deliveryAddress?.addressLine || 'Địa chỉ không xác định'
-                      }
-                    </p>
-                    {typeof order.deliveryAddress === 'object' && order.deliveryAddress?.label && (
-                      <p className="text-sm text-gray-500 mt-1">
-                        📍 {order.deliveryAddress.label}
-                      </p>
-                    )}
-                    {typeof order.deliveryAddress === 'object' && order.deliveryAddress?.note && (
-                      <p className="text-sm text-gray-500 mt-1">
-                        📝 {order.deliveryAddress.note}
-                      </p>
-                    )}
+                    <p className="text-gray-600">{order.deliveryAddress}</p>
                   </div>
                   {order.specialInstructions && (
                     <div>

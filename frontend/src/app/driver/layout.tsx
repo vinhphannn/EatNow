@@ -1,5 +1,7 @@
+"use client";
+
 import type { ReactNode } from "react";
-import DriverNavBar from "../../components/nav/DriverNavBar";
+import { DriverNavBar } from "../../components";
 
 export default function DriverLayout({ children }: { children: ReactNode }) {
 	return (

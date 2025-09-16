@@ -1,112 +1,75 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 
-interface ToastProps {
+interface ToastContextType {
+  showToast: (message: string, type: 'success' | 'error' | 'info') => void;
+  ToastContainer: () => JSX.Element;
+}
+
+const ToastContext = createContext<ToastContextType | undefined>(undefined);
+
+interface Toast {
+  id: string;
   message: string;
   type: 'success' | 'error' | 'info';
-  duration?: number;
-  onClose: () => void;
 }
 
-export default function Toast({ message, type, duration = 3000, onClose }: ToastProps) {
-  const [isVisible, setIsVisible] = useState(true);
+export function ToastProvider({ children }: { children: ReactNode }) {
+  const [toasts, setToasts] = useState<Toast[]>([]);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsVisible(false);
-      setTimeout(onClose, 300); // Wait for animation to complete
-    }, duration);
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info') => {
+    const id = Math.random().toString(36).substr(2, 9);
+    const newToast = { id, message, type };
+    
+    setToasts(prev => [...prev, newToast]);
+    
+    // Auto remove after 3 seconds
+    setTimeout(() => {
+      setToasts(prev => prev.filter(toast => toast.id !== id));
+    }, 3000);
+  }, []);
 
-    return () => clearTimeout(timer);
-  }, [duration, onClose]);
-
-  const getTypeStyles = () => {
-    switch (type) {
-      case 'success':
-        return 'bg-green-500 text-white';
-      case 'error':
-        return 'bg-red-500 text-white';
-      case 'info':
-        return 'bg-blue-500 text-white';
-      default:
-        return 'bg-gray-500 text-white';
-    }
-  };
-
-  const getIcon = () => {
-    switch (type) {
-      case 'success':
-        return (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-        );
-      case 'error':
-        return (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        );
-      case 'info':
-        return (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        );
-      default:
-        return null;
-    }
-  };
-
-  return (
-    <div
-      className={`fixed top-4 right-4 z-50 flex items-center space-x-2 px-4 py-3 rounded-lg shadow-lg transform transition-all duration-300 ${
-        isVisible ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'
-      } ${getTypeStyles()}`}
-    >
-      {getIcon()}
-      <span className="font-medium">{message}</span>
-      <button
-        onClick={() => {
-          setIsVisible(false);
-          setTimeout(onClose, 300);
-        }}
-        className="ml-2 hover:bg-black hover:bg-opacity-20 rounded-full p-1 transition-colors"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-    </div>
-  );
-}
-
-// Hook để sử dụng toast dễ dàng
-export function useToast() {
-  const [toasts, setToasts] = useState<Array<{ id: number; message: string; type: 'success' | 'error' | 'info' }>>([]);
-
-  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    const id = Date.now();
-    setToasts(prev => [...prev, { id, message, type }]);
-  };
-
-  const removeToast = (id: number) => {
+  const removeToast = (id: string) => {
     setToasts(prev => prev.filter(toast => toast.id !== id));
   };
 
   const ToastContainer = () => (
     <div className="fixed top-4 right-4 z-50 space-y-2">
       {toasts.map(toast => (
-        <Toast
+        <div
           key={toast.id}
-          message={toast.message}
-          type={toast.type}
-          onClose={() => removeToast(toast.id)}
-        />
+          className={`px-4 py-2 rounded-lg shadow-lg text-white max-w-sm ${
+            toast.type === 'success' ? 'bg-green-500' :
+            toast.type === 'error' ? 'bg-red-500' :
+            'bg-blue-500'
+          }`}
+        >
+          <div className="flex justify-between items-center">
+            <span>{toast.message}</span>
+            <button
+              onClick={() => removeToast(toast.id)}
+              className="ml-2 text-white hover:text-gray-200"
+            >
+              ×
+            </button>
+          </div>
+        </div>
       ))}
     </div>
   );
 
-  return { showToast, ToastContainer };
+  return (
+    <ToastContext.Provider value={{ showToast, ToastContainer }}>
+      {children}
+    </ToastContext.Provider>
+  );
+}
+
+export function useToast() {
+  const context = useContext(ToastContext);
+  if (!context) {
+    throw new Error('useToast must be used within ToastProvider');
+  }
+  return context;
 }

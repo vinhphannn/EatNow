@@ -1,7 +1,13 @@
-import { redirect } from "next/navigation";
+"use client";
+
+import { useEffect } from "react";
 
 export default function AdminIndex() {
-	redirect("/admin/dashboard");
+	useEffect(() => {
+		window.location.href = "/admin/dashboard";
+	}, []);
+	
+	return <div>Redirecting...</div>;
 }
 
 

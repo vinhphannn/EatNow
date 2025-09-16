@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useToast } from '../../../components/Toast';
-import OrderNotification from '../../../components/OrderNotification';
+import { useToast, OrderNotification } from '../../../components';
 
 interface CartItem {
   id: string;
@@ -538,7 +537,7 @@ export default function CheckoutPage() {
         </div>
       </div>
       <ToastContainer />
-      {customerId && <OrderNotification customerId={customerId} />}
+      <OrderNotification />
     </main>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useToast } from '../../../components/Toast';
+import { useToast } from '../../../components';
 import { useRestaurantNotifications } from '../../../hooks/useSocket';
 
 interface Order {
