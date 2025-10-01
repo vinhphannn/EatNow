@@ -1,0 +1,47 @@
+﻿# Node
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-store/
+.npm/
+.yarn/
+
+# Build outputs
+build/
+dist/
+.next/
+out/
+coverage/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Env files
+.env
+.env.*
+
+# Python (if any notebooks/tools)
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# IDE
+.idea/
+*.iml
+
+# OS
+*.swp
+
+# Logs
+logs/
+*.log
+
+# Misc
+frontend/tailieu/
+ node_modules/\; Add-Content -Encoding UTF8 .gitignore \**/node_modules/\; Add-Content -Encoding UTF8 .gitignore \frontend/public/EatNow.rar\; Add-Content -Encoding UTF8 .gitignore \*.rar
+*.rar
+frontend/public/EatNow.rar

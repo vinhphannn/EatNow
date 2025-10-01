@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Reset và biến màu cơ bản */
+:root {
+  --bg: 245 245 245;
+}
+
+html, body {
+  min-height: 100%;
+  background: #f9fafb;
+}
+
+/* Container chuẩn */
+.container {
+  max-width: 1100px;
+}
+
+/* Card đổ bóng mềm hiện đại */
+.card {
+  @apply rounded-2xl border bg-white/90 shadow-sm backdrop-blur;
+}
+
+.card-hover {
+  transition: transform 200ms, box-shadow 200ms;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(0,0,0,.06);
+}
+
+/* Nút chính hiện đại */
+.btn-primary {
+  @apply rounded-lg bg-orange-600 px-4 py-2 font-semibold text-white hover:bg-orange-700;
+}
+.btn-outline {
+  @apply rounded-lg border px-4 py-2 text-gray-700 hover:bg-gray-50;
+}
+
+/* Typography đẹp hơn */
+h1, h2, h3 {
+  letter-spacing: -0.02em;
+}
