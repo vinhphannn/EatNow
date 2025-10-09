@@ -12,12 +12,12 @@ export default function AdminIndex() {
 	useEffect(() => {
 		if (isLoading) return;
 
-		if (!isAuthenticated || user?.role !== UserRole.ADMIN) {
-			router.push('/admin/login');
+    if (!isAuthenticated || user?.role !== UserRole.ADMIN) {
+      router.replace('/admin/login');
 			return;
 		}
 
-		router.push('/admin/dashboard');
+    router.replace('/admin/dashboard');
 	}, [isAuthenticated, user, isLoading, router]);
 
 	return (

@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '../../../components';
 import { apiClient } from '../../../services/api.client';
+import { useCustomerAuth } from '@/contexts/AuthContext';
+import { useCustomerNotifications } from '@/hooks/useSocket';
 
 interface Order {
   _id: string;
@@ -52,6 +54,7 @@ interface Order {
 export default function OrdersPage() {
   const router = useRouter();
   const { showToast, ToastContainer } = useToast();
+  const { user } = useCustomerAuth();
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,30 +62,52 @@ export default function OrdersPage() {
   const [sortBy, setSortBy] = useState<'newest' | 'oldest'>('newest');
 
   useEffect(() => {
+    // If using cookie-based auth, rely on server session; optional client hint
     loadOrders();
   }, []);
 
-  const loadOrders = async () => {
-    const token = localStorage.getItem('eatnow_token');
-    if (!token) {
-      router.push('/customer/login');
-      return;
-    }
+  // Realtime: listen for order status updates and refresh
+  const { socket } = useCustomerNotifications((user as any)?.id || (user as any)?._id || '');
+  useEffect(() => {
+    if (!socket) return;
+    const onStatus = (payload: any) => {
+      try {
+        const short = String(payload.orderId || '').slice(-8).toUpperCase();
+        showToast(`Đơn #${short} cập nhật: ${payload.status}`, 'info');
+      } catch {}
+      loadOrders();
+    };
+    socket.on('order_status_update:v1', onStatus);
+    return () => {
+      socket.off('order_status_update:v1', onStatus);
+    };
+  }, [socket]);
 
+  // Join per-order rooms so updates arrive even if user room mismatch
+  useEffect(() => {
+    if (!socket || !orders?.length) return;
+    try {
+      orders.forEach(o => socket.emit('join_order', o._id));
+      return () => {
+        orders.forEach(o => socket.emit('leave_order', o._id));
+      };
+    } catch {}
+  }, [socket, orders.map?.(o => o._id).join(',')]);
+
+  const loadOrders = async () => {
     try {
       const response = await apiClient.get('/api/v1/orders/customer');
       const ordersData = Array.isArray(response) ? response : ((response as any)?.data || []);
       setOrders(ordersData as any);
-      console.log('Orders loaded:', ordersData);
-      console.log('Number of orders:', ordersData.length);
       
-      if (ordersData.length === 0) {
-        console.log('No orders found - checking if user is logged in');
-        const token = localStorage.getItem('eatnow_token');
-        console.log('Token exists:', !!token);
-      }
+      // If unauthorized, redirect to login
     } catch (error) {
       console.error('Load orders error:', error);
+      const status = (error as any)?.status || (error as any)?.response?.status;
+      if (status === 401 || status === 403) {
+        router.push('/customer/login');
+        return;
+      }
       showToast('Có lỗi xảy ra khi tải danh sách đơn hàng', 'error');
     } finally {
       setLoading(false);

@@ -12,7 +12,7 @@ export default function AdminNavBar() {
 				<div className="flex flex-wrap items-center gap-4 text-sm">
 					<Link href="/admin/dashboard" className={isActive("/admin/dashboard")}>Dashboard</Link>
 					<Link href="/admin/restaurants" className={isActive("/admin/restaurants")}>Nhà hàng</Link>
-					<Link href="/admin/users" className={isActive("/admin/users")}>Người dùng</Link>
+					<Link href="/admin/customers" className={isActive("/admin/customers")}>Khách hàng</Link>
 					<Link href="/admin/drivers" className={isActive("/admin/drivers")}>Tài xế</Link>
 					<Link href="/admin/orders" className={isActive("/admin/orders")}>Đơn hàng</Link>
 					<Link href="/admin/vouchers" className={isActive("/admin/vouchers")}>Khuyến mãi</Link>

@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { User, UserDocument } from '../user/schemas/user.schema';
+import { UserService } from '../user/user.service';
 import { Driver, DriverDocument } from './schemas/driver.schema';
 import { Order, OrderDocument } from '../order/schemas/order.schema';
 
@@ -10,7 +10,7 @@ export class DriverService {
   constructor(
     @InjectModel(Driver.name) private readonly driverModel: Model<DriverDocument>,
     @InjectModel(Order.name) private readonly orderModel: Model<OrderDocument>,
-    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+    private readonly users: UserService,
   ) {}
 
   async findAll() {
@@ -27,6 +27,22 @@ export class DriverService {
       userId: d.userId,
       createdAt: d.createdAt,
     }));
+  }
+
+  async getWalletForUser(userId: string) {
+    if (!userId) throw new NotFoundException('User not found');
+    const d = await this.driverModel.findOne({ userId: new Types.ObjectId(userId) }).lean();
+    if (!d) return { walletBalance: 0, ordersCompleted: 0, recentOrders: [] };
+    const recent = await this.orderModel
+      .find({ driverId: (d as any)._id })
+      .sort({ createdAt: -1 })
+      .limit(3)
+      .lean();
+    return {
+      walletBalance: (d as any).walletBalance || 0,
+      ordersCompleted: (d as any).ordersCompleted || 0,
+      recentOrders: recent.map((o: any) => ({ id: String(o._id), total: o.total, deliveryFee: o.deliveryFee, status: o.status })),
+    };
   }
 
   async updateLocationByUser(userId: string, lat: number, lng: number) {
@@ -115,7 +131,7 @@ export class DriverService {
       const created = await this.driverModel.create({ userId, status: 'inactive' } as any);
       driver = created?.toObject?.() || (created as any);
     }
-    const user = await this.userModel.findById(userId).lean();
+    const user = await this.users.findByIdLean(userId);
     return {
       id: driver._id,
       // common fields from user
@@ -145,7 +161,7 @@ export class DriverService {
     delete driverUpdate.phone;
 
     if (Object.keys(userUpdate).length > 0) {
-      await this.userModel.findByIdAndUpdate(userId, { $set: userUpdate });
+      await this.users.setById(userId, userUpdate);
     }
 
     const updated = await this.driverModel.findOneAndUpdate(

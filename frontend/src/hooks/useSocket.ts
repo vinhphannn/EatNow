@@ -64,11 +64,11 @@ export function useCustomerNotifications(customerId: string) {
 
   useEffect(() => {
     if (socket && customerId) {
-      // Join customer room
-      socket.emit('join_customer', customerId);
+      // Join user room (server expects 'join_user')
+      socket.emit('join_user', customerId);
       
       return () => {
-        socket.emit('leave_customer', customerId);
+        socket.emit('leave_user', customerId);
       };
     }
   }, [socket, customerId]);

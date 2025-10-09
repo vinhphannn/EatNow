@@ -175,17 +175,19 @@ export const useOrderUpdates = (restaurantId?: string) => {
       setNewOrders(prev => [order, ...prev.slice(0, 9)]); // Keep last 10
       
       // Dispatch custom event for other components to listen
-      window.dispatchEvent(new CustomEvent('eatnow:new_order', {
+      // Deprecated: new_order custom event removed
+      /* window.dispatchEvent(new CustomEvent('eatnow:new_order', {
         detail: { order, restaurantId }
-      }));
+      })); */
     },
     onOrderUpdate: (order) => {
       setUpdatedOrders(prev => [order, ...prev.slice(0, 9)]); // Keep last 10
       
       // Dispatch custom event for other components to listen
-      window.dispatchEvent(new CustomEvent('eatnow:order_update', {
+      // Deprecated: order_update custom event removed
+      /* window.dispatchEvent(new CustomEvent('eatnow:order_update', {
         detail: { order, restaurantId }
-      }));
+      })); */
     },
   });
 
@@ -286,12 +288,10 @@ export const useRestaurantStats = (refreshInterval: number = 30000) => {
       refreshStats();
     };
 
-    window.addEventListener('eatnow:order_update', handleOrderUpdate);
-    window.addEventListener('eatnow:new_order', handleOrderUpdate);
+    // Deprecated listeners removed (migrated to socket 'order_status_update:v1')
 
     return () => {
-      window.removeEventListener('eatnow:order_update', handleOrderUpdate);
-      window.removeEventListener('eatnow:new_order', handleOrderUpdate);
+      // no-op
     };
   }, [refreshStats]);
 

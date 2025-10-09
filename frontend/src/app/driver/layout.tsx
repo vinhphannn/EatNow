@@ -14,10 +14,15 @@ export default function DriverLayout({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         if (isLoading) return;
-        // Allow login and register without redirect
         const isAuthPage = pathname === '/driver/login' || pathname === '/driver/register';
-        if (!isAuthPage && (!isAuthenticated || user?.role !== 'driver')) {
+        if (isAuthPage) return;
+        if (!isAuthenticated) {
             router.push('/driver/login');
+            return;
+        }
+        if (user && user.role !== 'driver') {
+            router.push('/unauthorized');
+            return;
         }
     }, [isAuthenticated, isLoading, user, pathname, router]);
 

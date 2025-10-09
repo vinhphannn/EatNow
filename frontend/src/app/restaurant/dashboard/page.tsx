@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { restaurantService, RestaurantStats, RecentOrder } from "@modules/restaurant/services";
+import { useRestaurantWallet } from "@/hooks/useRestaurantWallet";
+import WalletCard from "@/components/WalletCard";
 import { handleApiError } from "@/services/api.client";
 
 export default function RestaurantDashboardPage() {
@@ -12,6 +14,7 @@ export default function RestaurantDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const { wallet, loading: walletLoading } = useRestaurantWallet();
 
   // Load initial data
   useEffect(() => {
@@ -171,6 +174,9 @@ export default function RestaurantDashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Wallet */}
+      <div>{!walletLoading && <WalletCard title="Ví nhà hàng" wallet={wallet} />}</div>
 
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

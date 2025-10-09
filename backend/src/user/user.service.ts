@@ -14,6 +14,41 @@ export class UserService {
     @InjectModel(Driver.name) private readonly driverModel: Model<DriverDocument>,
   ) {}
 
+  async findUserDocByEmail(email: string) {
+    return this.userModel.findOne({ email: email.toLowerCase() }).lean();
+  }
+
+  async findByIdLean(id: any) {
+    return this.userModel.findById(id).lean();
+  }
+
+  async setById(id: any, set: Record<string, any>) {
+    await this.userModel.findByIdAndUpdate(id, { $set: set });
+  }
+
+  // Tạo user cơ bản (đã hash mật khẩu từ bên ngoài)
+  async createUserBasic(payload: { email: string; passwordHash: string; name: string; phone?: string; role: UserRole | string }) {
+    const { email, passwordHash, name, phone, role } = payload;
+    if (!email || !passwordHash || !name || !role) {
+      throw new BadRequestException('Thiếu thông tin bắt buộc');
+    }
+    const exists = await this.userModel.findOne({ email: email.toLowerCase() }).lean();
+    if (exists) {
+      throw new BadRequestException('Email đã được sử dụng');
+    }
+    const created = await this.userModel.create({
+      email: email.toLowerCase(),
+      password: passwordHash,
+      name,
+      phone,
+      role,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as any);
+    return created;
+  }
+
   // Đăng ký tài khoản khách hàng
   async registerCustomer(payload: { email: string; password: string; name: string; phone?: string }) {
     const { email, password, name, phone } = payload;
@@ -188,6 +223,41 @@ export class UserService {
     } catch (error) {
       throw new NotFoundException('Driver profile not found');
     }
+  }
+
+  async addAddress(userId: any, addressData: any) {
+    const user = await this.userModel.findById(userId);
+    if (!user) throw new NotFoundException('User not found');
+    if (!Array.isArray((user as any).addresses)) (user as any).addresses = [];
+    if (addressData?.isDefault) {
+      (user as any).addresses.forEach((addr: any) => (addr.isDefault = false));
+    }
+    (user as any).addresses.push({ ...addressData, isActive: true });
+    await user.save();
+    return (user as any).addresses;
+  }
+
+  async updatePreferences(userId: any, preferences: any) {
+    const updatable: any = {
+      language: preferences?.language,
+      country: preferences?.country,
+      timezone: preferences?.timezone,
+      currency: preferences?.currency,
+      allowPushNotifications: preferences?.allowPushNotifications,
+      allowEmailNotifications: preferences?.allowEmailNotifications,
+      allowSMSNotifications: preferences?.allowSMSNotifications,
+      allowMarketingEmails: preferences?.allowMarketingEmails,
+      allowLocationTracking: preferences?.allowLocationTracking,
+      favoriteCuisines: preferences?.favoriteCuisines,
+      dietaryRestrictions: preferences?.dietaryRestrictions,
+      allergens: preferences?.allergens,
+      spiceLevel: preferences?.spiceLevel,
+      updatedAt: new Date(),
+    };
+    Object.keys(updatable).forEach((k) => updatable[k] === undefined && delete updatable[k]);
+    const doc = await this.userModel.findByIdAndUpdate(userId, { $set: updatable }, { new: true }).lean();
+    if (!doc) throw new NotFoundException('User not found');
+    return doc;
   }
 }
 

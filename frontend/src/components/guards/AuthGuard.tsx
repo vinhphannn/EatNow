@@ -30,19 +30,19 @@ export function AuthGuard({
 
     // Check if user is authenticated
     if (!isAuthenticated || !user) {
-      router.push(fallbackPath);
+      router.replace(fallbackPath);
       return;
     }
 
     // Check role requirement
     if (requiredRole && !hasRole(requiredRole)) {
-      router.push('/unauthorized');
+      router.replace('/unauthorized');
       return;
     }
 
     // Check permission requirement
     if (requiredPermission && !checkPermission(requiredPermission)) {
-      router.push('/unauthorized');
+      router.replace('/unauthorized');
       return;
     }
   }, [isAuthenticated, isLoading, user, requiredRole, requiredPermission, router, fallbackPath, hasRole, checkPermission]);

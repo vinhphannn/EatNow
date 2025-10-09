@@ -66,8 +66,11 @@ export class Restaurant {
   closeTime: string; // HH:mm format
 
   // Status and settings
-  @Prop({ enum: ['pending', 'active', 'suspended', 'closed'], default: 'pending' })
+  @Prop({ enum: ['pending', 'active', 'suspended', 'closed', 'banned'], default: 'pending' })
   status: string;
+
+  @Prop()
+  banReason?: string;
 
   @Prop({ default: true })
   isOpen: boolean; // Current open/closed status
@@ -93,6 +96,14 @@ export class Restaurant {
 
   @Prop({ default: 0 })
   totalRevenue: number;
+
+  // Minimal wallet for settlement
+  @Prop({ default: 0 })
+  walletBalance: number; // Accumulated net earnings awaiting payout
+
+  // Default commission rate for platform (e.g., 15%)
+  @Prop({ default: 0.15, min: 0, max: 1 })
+  commissionRate: number;
 
   // Delivery settings
   @Prop({ default: '30-45 phút' })

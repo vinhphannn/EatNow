@@ -228,12 +228,7 @@ export default function CheckoutPage() {
       const orderCodes = orders.map((order: any) => order.orderCode || order.id).join(', ');
       showToast(`Đặt hàng thành công! Mã đơn hàng: ${orderCodes}`, 'success');
 
-      // Clear cart
-      try {
-        await apiClient.delete(`/api/v1/cart`);
-      } catch (error) {
-        console.warn('Could not clear cart:', error);
-      }
+      // Do not clear entire cart; it is adjusted on the server. Just reload a bit later.
 
       // Clear checkout items
       if (typeof localStorage !== 'undefined') {

@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Order, OrderDocument } from '../schemas/order.schema';
 import { Driver, DriverDocument } from '../../driver/schemas/driver.schema';
+import { Restaurant, RestaurantDocument } from '../../restaurant/schemas/restaurant.schema';
 import { DriverPerformanceService } from '../../driver/services/driver-performance.service';
 import { DistanceService } from '../../common/services/distance.service';
 
@@ -13,6 +14,7 @@ export class OrderAssignmentService {
   constructor(
     @InjectModel(Order.name) private orderModel: Model<OrderDocument>,
     @InjectModel(Driver.name) private driverModel: Model<DriverDocument>,
+    @InjectModel(Restaurant.name) private restaurantModel: Model<RestaurantDocument>,
     private driverPerformanceService: DriverPerformanceService,
     private distanceService: DistanceService,
   ) {}
@@ -28,16 +30,16 @@ export class OrderAssignmentService {
         return false;
       }
 
-      // Get restaurant location (assuming it's stored in restaurant)
-      // For now, we'll use a mock restaurant location
-      const restaurantLat = 10.7769; // Mock coordinates
-      const restaurantLon = 106.7009;
+      // Get restaurant location
+      const rest = await this.restaurantModel.findById(order.restaurantId).lean();
+      const restaurantLat = (rest as any)?.latitude ?? 10.7769;
+      const restaurantLon = (rest as any)?.longitude ?? 106.7009;
 
       // Find available drivers within 2km
       const availableDrivers = await this.driverPerformanceService.getAvailableDriversInRange(
         restaurantLat,
         restaurantLon,
-        2 // 2km radius
+        5 // 5km radius
       );
 
       if (availableDrivers.length === 0) {

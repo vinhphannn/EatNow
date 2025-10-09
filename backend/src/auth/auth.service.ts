@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User, UserDocument } from '../user/schemas/user.schema';
+import { UserService } from '../user/user.service';
 import { Customer, CustomerDocument } from '../customer/schemas/customer.schema';
 import { Restaurant, RestaurantDocument } from '../restaurant/schemas/restaurant.schema';
 import { Driver, DriverDocument } from '../driver/schemas/driver.schema';
@@ -15,6 +16,7 @@ import { RefreshToken, RefreshTokenDocument } from './schemas/refresh-token.sche
 export class AuthService {
   constructor(
     private readonly jwt: JwtService,
+    private readonly users: UserService,
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     @InjectModel(Customer.name) private readonly customerModel: Model<CustomerDocument>,
     @InjectModel(Restaurant.name) private readonly restaurantModel: Model<RestaurantDocument>,
@@ -23,7 +25,7 @@ export class AuthService {
   ) {}
 
   async validateUser(email: string, password: string) {
-    const user = await this.userModel.findOne({ email: email.toLowerCase() }).lean();
+    const user = await this.users.findUserDocByEmail(email);
     if (!user) throw new UnauthorizedException('Invalid credentials');
     const ok = await bcrypt.compare(password, (user as any).password);
     if (!ok) throw new UnauthorizedException('Invalid credentials');
@@ -35,7 +37,7 @@ export class AuthService {
     const token = await this.jwt.signAsync({ sub: u.id, role: u.role, email: u.email });
     
     // Lấy thông tin user đầy đủ từ database
-    const fullUser = await this.userModel.findById(u.id).lean();
+    const fullUser = await this.users.findByIdLean(u.id);
 
     // Auto-create customer profile on login if missing (for legacy users)
     if ((u as any).role === 'customer') {
@@ -49,9 +51,7 @@ export class AuthService {
             phone: (fullUser as any)?.phone,
           });
           await customer.save();
-          await this.userModel.findByIdAndUpdate((fullUser as any)?._id, {
-            $set: { customerProfile: customer._id }
-          });
+          await this.users.setById((fullUser as any)?._id, { customerProfile: (customer as any)._id });
         }
       } catch (e) {
         // Do not block login on customer creation failure; log in console in runtime
@@ -68,9 +68,7 @@ export class AuthService {
           driver = created?.toObject?.() || (created as any);
         }
         if (driver?._id) {
-          await this.userModel.findByIdAndUpdate((fullUser as any)?._id, {
-            $set: { driverProfile: (driver as any)._id }
-          });
+          await this.users.setById((fullUser as any)?._id, { driverProfile: (driver as any)._id });
         }
       } catch (e) {
         // Do not block login if driver profile creation fails
@@ -94,7 +92,7 @@ export class AuthService {
 
   async register(email: string, password: string, name: string, phone: string, role: string) {
     // Check if user already exists
-    const existingUser = await this.userModel.findOne({ email: email.toLowerCase() });
+    const existingUser = await this.users.findUserDocByEmail(email);
     if (existingUser) {
       throw new UnauthorizedException('User already exists');
     }
@@ -103,19 +101,14 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     try {
-      // Create user
-      const user = new this.userModel({
-        email: email.toLowerCase(),
-        password: hashedPassword,
+      // Create user via UserService
+      const user = await this.users.createUserBasic({
+        email,
+        passwordHash: hashedPassword,
         name,
         phone,
         role,
-        isActive: true,
-        createdAt: new Date(),
-        updatedAt: new Date(),
       });
-
-      await user.save();
       console.log('✅ User saved successfully:', (user as any)._id);
 
       // Create role-specific profile
@@ -133,9 +126,7 @@ export class AuthService {
           console.log('✅ Customer profile created:', customer._id);
 
           // Update user to reference customer profile
-          await this.userModel.findByIdAndUpdate((user as any)._id, {
-            $set: { customerProfile: customer._id }
-          });
+          await this.users.setById((user as any)._id, { customerProfile: (customer as any)._id });
           console.log('✅ User linked to customer profile');
         } catch (error) {
           console.error('❌ Error creating customer profile:', error);
@@ -154,9 +145,7 @@ export class AuthService {
             });
             restaurant = created as any;
           }
-          await this.userModel.findByIdAndUpdate((user as any)._id, {
-            $set: { restaurantProfile: (restaurant as any)._id }
-          });
+          await this.users.setById((user as any)._id, { restaurantProfile: (restaurant as any)._id });
         } catch (error) {
           // Không chặn đăng ký nếu tạo restaurant thất bại
         }
@@ -174,9 +163,7 @@ export class AuthService {
             driver = created?.toObject?.() || (created as any);
           }
           if (driver?._id) {
-            await this.userModel.findByIdAndUpdate((user as any)._id, {
-              $set: { driverProfile: (driver as any)._id }
-            });
+            await this.users.setById((user as any)._id, { driverProfile: (driver as any)._id });
           }
         } catch (error) {
           // Don't block registration if driver creation fails
@@ -217,7 +204,7 @@ export class AuthService {
     if (!token) throw new UnauthorizedException('Missing token');
     try {
       const payload = await this.jwt.verifyAsync(token);
-      const user = await this.userModel.findById(payload.sub).lean();
+      const user = await this.users.findByIdLean(payload.sub);
       if (!user) throw new UnauthorizedException('User not found');
       return {
         id: (user as any)._id.toString(),
@@ -279,7 +266,7 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token reuse detected');
     }
     if (!doc) throw new UnauthorizedException('Invalid or rotated token');
-    const user = await this.userModel.findById((doc as any).userId).lean();
+    const user = await this.users.findByIdLean((doc as any).userId);
     if (!user) throw new UnauthorizedException('User not found');
 
     // rotate: mark old as rotated

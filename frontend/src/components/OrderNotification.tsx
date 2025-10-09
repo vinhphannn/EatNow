@@ -32,10 +32,10 @@ export default function OrderNotification() {
         }, 5000);
       };
 
-      socket.on('order_update', handleOrderUpdate);
+      socket.on('order_status_update:v1', handleOrderUpdate);
       
       return () => {
-        socket.off('order_update', handleOrderUpdate);
+        socket.off('order_status_update:v1', handleOrderUpdate);
       };
     }
   }, [socket, customerId]);

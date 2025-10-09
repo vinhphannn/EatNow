@@ -44,6 +44,6 @@ import { SearchService } from '../search/search.service';
   ],
   exports: ['OPENSEARCH', SearchService],
 })
-export class SearchModule {}
+export class MongoModule {}
 
 

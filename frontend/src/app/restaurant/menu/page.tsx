@@ -1,6 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import ImageUpload from "../../../components/ImageUpload";
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Select, MenuItem, FormControlLabel, Checkbox, Stack, Typography, IconButton, Box, Card, CardContent, CardActions, Chip, Tooltip } from "@mui/material";
+import { PlusIcon, ChartBarIcon, XMarkIcon, PencilSquareIcon, TrashIcon, PauseIcon, PlayIcon, PhotoIcon } from "@heroicons/react/24/outline";
+import StatCard from "@/components/ui/StatCard";
 
 type Item = {
   id: string;
@@ -277,69 +280,18 @@ export default function RestaurantMenuPage() {
           <p className="text-gray-600 mt-1">Quản lý món ăn, giá cả và trạng thái bán hàng</p>
         </div>
         <div className="flex items-center gap-3">
-          <button className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
-            <span className="mr-2">📊</span>
-            Xem báo cáo
-          </button>
-          <button onClick={openCreate} className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center">
-            <span className="mr-2">➕</span>
-            Thêm món ăn
-          </button>
+          <Button variant="outlined" startIcon={<ChartBarIcon width={18} />}>Xem báo cáo</Button>
+          <Button variant="contained" disableElevation onClick={openCreate} startIcon={<PlusIcon width={18} />} sx={{ textTransform: 'none' }}>Thêm món ăn</Button>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl p-4 border border-gray-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Tổng món ăn</p>
-              <p className="text-2xl font-bold text-gray-900">{items.length}</p>
-            </div>
-            <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
-              <span className="text-orange-600">🍽️</span>
-            </div>
-          </div>
-        </div>
-        
-        <div className="bg-white rounded-xl p-4 border border-gray-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Đang bán</p>
-              <p className="text-2xl font-bold text-green-600">{items.filter(it => (it as any).isActive !== false).length}</p>
-            </div>
-            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-              <span className="text-green-600">✅</span>
-            </div>
-          </div>
-        </div>
-        
-        <div className="bg-white rounded-xl p-4 border border-gray-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Tạm dừng</p>
-              <p className="text-2xl font-bold text-red-600">{items.filter(it => (it as any).isActive === false).length}</p>
-            </div>
-            <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-              <span className="text-red-600">⏸️</span>
-            </div>
-          </div>
-        </div>
-        
-        <div className="bg-white rounded-xl p-4 border border-gray-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Giá TB</p>
-              <p className="text-2xl font-bold text-blue-600">
-                ₫{items.length > 0 ? Math.round(items.reduce((sum, it) => sum + ((it as any).price || 0), 0) / items.length).toLocaleString() : 0}
-              </p>
-            </div>
-            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-              <span className="text-blue-600">💰</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+        <StatCard label="Tổng món ăn" value={items.length} icon={<PhotoIcon width={20} />} colorBoxBg="rgba(249,115,22,0.12)" />
+        <StatCard label="Đang bán" value={items.filter(it => (it as any).isActive !== false).length} icon={<PlayIcon width={20} />} colorBoxBg="rgba(34,197,94,0.12)" />
+        <StatCard label="Tạm dừng" value={items.filter(it => (it as any).isActive === false).length} icon={<PauseIcon width={20} />} colorBoxBg="rgba(239,68,68,0.12)" />
+        <StatCard label="Giá TB" value={`₫${(items.length > 0 ? Math.round(items.reduce((sum, it) => sum + ((it as any).price || 0), 0) / items.length) : 0).toLocaleString()}`} icon={<ChartBarIcon width={20} />} colorBoxBg="rgba(59,130,246,0.12)" />
+      </Box>
 
       {/* Error Message */}
       {loadError && (
@@ -376,433 +328,174 @@ export default function RestaurantMenuPage() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr', lg: '1fr 1fr 1fr' }, gap: 2 }}>
           {items.map((item) => (
-            <div key={item.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow">
-              {/* Image */}
-              <div className="relative h-48 bg-gray-100">
+            <Card key={item.id} elevation={0} sx={{ border: theme => `1px solid ${theme.palette.divider}` }}>
+              <Box sx={{ position: 'relative', height: 192, bgcolor: 'action.hover', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 {item.imageUrl ? (
-                  <img 
-                    src={item.imageUrl} 
-                    alt={item.name} 
-                    className="w-full h-full object-cover"
-                  />
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={item.imageUrl} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <span className="text-4xl text-gray-400">🍽️</span>
-                  </div>
+                  <PhotoIcon width={48} />
                 )}
-                <div className="absolute top-3 right-3">
-                  <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                    (item as any).isActive === false 
-                      ? 'bg-red-100 text-red-800' 
-                      : 'bg-green-100 text-green-800'
-                  }`}>
-                    {(item as any).isActive === false ? 'Tạm dừng' : 'Đang bán'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Content */}
-              <div className="p-6">
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="text-lg font-semibold text-gray-900 line-clamp-1">{item.name}</h3>
-                  <span className={`text-xs px-2 py-1 rounded-full ${
-                    (item as any).type === 'food' ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-800'
-                  }`}>
-                    {(item as any).type === 'food' ? 'Món ăn' : 'Đồ uống'}
-                  </span>
-                </div>
-                
+                <Chip size="small" color={(item as any).isActive === false ? 'error' : 'success'} label={(item as any).isActive === false ? 'Tạm dừng' : 'Đang bán'} sx={{ position: 'absolute', top: 12, right: 12 }} />
+              </Box>
+              <CardContent>
+                <Stack direction="row" alignItems="flex-start" justifyContent="space-between" sx={{ mb: 1 }}>
+                  <Typography variant="subtitle1" fontWeight={600} noWrap>{item.name}</Typography>
+                  <Chip size="small" color={(item as any).type === 'food' ? 'warning' : 'info'} label={(item as any).type === 'food' ? 'Món ăn' : 'Đồ uống'} />
+                </Stack>
                 {item.description && (
-                  <p className="text-gray-600 text-sm mb-3 line-clamp-2">{item.description}</p>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }} noWrap>
+                    {item.description}
+                  </Typography>
                 )}
-
-                <div className="flex items-center justify-between mb-4">
-                  <div className="text-2xl font-bold text-orange-600">
-                    ₫{((item as any).price || 0).toLocaleString()}
-                  </div>
+                <Stack direction="row" alignItems="center" justifyContent="space-between">
+                  <Typography variant="h6" color="warning.main">₫{((item as any).price || 0).toLocaleString()}</Typography>
                   {(item as any).quantityRemaining !== null && (
-                    <div className="text-sm text-gray-500">
-                      Còn: {(item as any).quantityRemaining}
-                    </div>
+                    <Typography variant="body2" color="text.secondary">Còn: {(item as any).quantityRemaining}</Typography>
                   )}
-                </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-2">
-                  <button 
-                    onClick={() => openEdit(item)}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors text-sm"
-                  >
-                    ✏️ Sửa
-                  </button>
-                  <button 
-                    onClick={() => toggleActive(item)}
-                    className={`px-3 py-2 rounded-lg text-sm transition-colors ${
-                      (item as any).isActive === false
-                        ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                        : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
-                    }`}
-                  >
-                    {(item as any).isActive === false ? '▶️' : '⏸️'}
-                  </button>
-                  <button 
-                    onClick={() => removeItem(item)}
-                    className="px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm"
-                  >
-                    🗑️
-                  </button>
-                </div>
-              </div>
-            </div>
+                </Stack>
+              </CardContent>
+              <CardActions sx={{ display: 'flex', justifyContent: 'space-between', px: 2, pb: 2 }}>
+                <Button variant="outlined" size="small" onClick={() => openEdit(item)} startIcon={<PencilSquareIcon width={16} />} sx={{ textTransform: 'none' }} aria-label="Sửa món">
+                  Sửa
+                </Button>
+                <Stack direction="row" spacing={1}>
+                  <Tooltip title={(item as any).isActive === false ? 'Mở bán' : 'Tạm dừng'}>
+                    <IconButton aria-label={(item as any).isActive === false ? 'Mở bán' : 'Tạm dừng'} onClick={() => toggleActive(item)}>
+                      {(item as any).isActive === false ? <PlayIcon width={18} /> : <PauseIcon width={18} />}
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Xóa">
+                    <IconButton color="error" aria-label="Xóa món" onClick={() => removeItem(item)}>
+                      <TrashIcon width={18} />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
+              </CardActions>
+            </Card>
           ))}
-        </div>
+        </Box>
       )}
 
       {/* Add Item Modal */}
-      {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="w-full max-w-2xl mx-4 rounded-2xl bg-white shadow-2xl">
-            {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+      <Dialog open={modalOpen} onClose={() => { if (!saving) setModalOpen(false); }} fullWidth maxWidth="md" aria-describedby="add-item-desc">
+        <DialogTitle>
+          <Stack direction="row" alignItems="center" justifyContent="space-between">
+            <Box>
+              <Typography variant="h6">Thêm món ăn mới</Typography>
+              <Typography variant="caption" color="text.secondary" id="add-item-desc">Tạo món ăn mới cho thực đơn</Typography>
+            </Box>
+            <IconButton aria-label="Đóng" disabled={saving} onClick={() => { if (!saving) setModalOpen(false); }}>
+              <XMarkIcon width={18} />
+            </IconButton>
+          </Stack>
+        </DialogTitle>
+        <DialogContent dividers>
+          {saveError && (
+            <Typography color="error" variant="body2" sx={{ mb: 2 }}>{String(saveError)}</Typography>
+          )}
+          <Box sx={{ display: { xs: 'block', md: 'grid' }, gridTemplateColumns: { md: '1fr 1fr' }, gap: 2 }}>
+            <Stack spacing={2}>
+              <TextField label="Tên món ăn" required value={form.name} onChange={(e)=>setForm({...form, name: e.target.value})} placeholder="Ví dụ: Cơm tấm sườn nướng" />
+              <TextField label="Giá bán (VNĐ)" type="number" required value={form.price} onChange={(e)=>setForm({...form, price: Number(e.target.value)})} />
+              <Select value={form.type} onChange={(e)=>setForm({...form, type: e.target.value as any})} displayEmpty>
+                <MenuItem value={'food'}>Món ăn</MenuItem>
+                <MenuItem value={'drink'}>Đồ uống</MenuItem>
+              </Select>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+                <Select value={form.categoryId || ''} onChange={(e)=>setForm({...form, categoryId: e.target.value || undefined})} displayEmpty fullWidth>
+                  <MenuItem value="">-- Không chọn --</MenuItem>
+                  {categories.map(c => (
+                    <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                  ))}
+                </Select>
+                <TextField label="Vị trí hiển thị" type="number" value={typeof form.position === 'number' ? form.position : ''} onChange={(e)=>setForm({...form, position: e.target.value === '' ? undefined : Number(e.target.value)})} placeholder="Ví dụ: 1" fullWidth />
+              </Box>
+              <FormControlLabel control={<Checkbox checked={form.isActive !== false} onChange={(e)=>setForm({...form, isActive: e.target.checked})} />} label="Đang bán" />
+            </Stack>
+            <Stack spacing={2}>
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Thêm món ăn mới</h2>
-                <p className="text-gray-600 text-sm mt-1">Tạo món ăn mới cho thực đơn</p>
+                <Typography variant="body2" sx={{ mb: 1 }}>Hình ảnh món ăn</Typography>
+                <ImageUpload value={form.imageUrl} onChange={(imageUrl) => setForm({...form, imageUrl})} placeholder="Nhấp để chọn hình ảnh món ăn" />
               </div>
-              <button 
-                onClick={() => { if (!saving) setModalOpen(false); }}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                disabled={saving}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Error Message */}
-            {saveError && (
-              <div className="mx-6 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                <div className="flex items-center">
-                  <span className="mr-2">⚠️</span>
-                  {String(saveError)}
+              <div className="border rounded-xl p-4">
+                <div className="text-sm text-gray-600 mb-2">Xem trước</div>
+                <div className="rounded-lg border overflow-hidden">
+                  <div className="h-36 bg-gray-100 flex items-center justify-center">
+                    {form.imageUrl ? (
+                      <img src={form.imageUrl} alt={form.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-3xl text-gray-400">🍽️</span>
+                    )}
+                  </div>
+                  <div className="p-3 flex items-center justify-between">
+                    <div className="font-medium text-gray-900 truncate max-w-[60%]">{form.name || 'Tên món'}</div>
+                    <div className="text-orange-600 font-semibold">{form.price ? `₫${Number(form.price).toLocaleString()}` : '₫0'}</div>
+                  </div>
                 </div>
               </div>
-            )}
-
-            {/* Form */}
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Basic Info */}
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Tên món ăn *</label>
-                    <input 
-                      value={form.name} 
-                      onChange={(e) => setForm({...form, name: e.target.value})} 
-                      className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors"
-                      placeholder="Ví dụ: Cơm tấm sườn nướng"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Giá bán (VNĐ) *</label>
-                    <input 
-                      type="number" 
-                      value={form.price} 
-                      onChange={(e) => setForm({...form, price: Number(e.target.value)})} 
-                      className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors"
-                      placeholder="45000"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Loại món</label>
-                    <select 
-                      value={form.type} 
-                      onChange={(e) => setForm({...form, type: e.target.value as any})} 
-                      className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors"
-                    >
-                      <option value="food">🍽️ Món ăn</option>
-                      <option value="drink">🥤 Đồ uống</option>
-                    </select>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Danh mục</label>
-                      <select
-                        value={form.categoryId || ''}
-                        onChange={(e)=>setForm({...form, categoryId: e.target.value || undefined})}
-                        className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors"
-                      >
-                        <option value="">-- Không chọn --</option>
-                        {categories.map(c => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Vị trí hiển thị</label>
-                      <input
-                        type="number"
-                        value={typeof form.position === 'number' ? form.position : ''}
-                        onChange={(e)=>setForm({...form, position: e.target.value === '' ? undefined : Number(e.target.value)})}
-                        className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors"
-                        placeholder="Ví dụ: 1"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <input id="isActive"
-                      type="checkbox"
-                      checked={form.isActive !== false}
-                      onChange={(e)=>setForm({...form, isActive: e.target.checked})}
-                      className="h-4 w-4 text-orange-600 border-gray-300 rounded"
-                    />
-                    <label htmlFor="isActive" className="text-sm text-gray-700">Đang bán</label>
-                  </div>
-                </div>
-
-                {/* Image Preview */}
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Hình ảnh món ăn</label>
-                    <ImageUpload
-                      value={form.imageUrl}
-                      onChange={(imageUrl) => setForm({...form, imageUrl})}
-                      placeholder="Nhấp để chọn hình ảnh món ăn"
-                    />
-                  </div>
-                  {/* Live Preview */}
-                  <div className="border rounded-xl p-4">
-                    <div className="text-sm text-gray-600 mb-2">Xem trước</div>
-                    <div className="rounded-lg border overflow-hidden">
-                      <div className="h-36 bg-gray-100 flex items-center justify-center">
-                        {form.imageUrl ? (
-                          <img src={form.imageUrl} alt={form.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="text-3xl text-gray-400">🍽️</span>
-                        )}
-                      </div>
-                      <div className="p-3 flex items-center justify-between">
-                        <div className="font-medium text-gray-900 truncate max-w-[60%]">{form.name || 'Tên món'}</div>
-                        <div className="text-orange-600 font-semibold">{form.price ? `₫${Number(form.price).toLocaleString()}` : '₫0'}</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Description */}
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Mô tả món ăn</label>
-                  <textarea 
-                    value={form.description} 
-                    onChange={(e) => setForm({...form, description: e.target.value})} 
-                    rows={3}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors resize-none"
-                    placeholder="Mô tả chi tiết về món ăn, nguyên liệu, cách chế biến..."
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50 rounded-b-2xl">
-              <button 
-                onClick={() => { if (!saving) setModalOpen(false); }}
-                className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                disabled={saving}
-              >
-                Hủy bỏ
-              </button>
-              <button 
-                onClick={save} 
-                className="px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                disabled={saving}
-              >
-                {saving ? (
-                  <>
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Đang lưu...
-                  </>
-                ) : (
-                  <>
-                    <span className="mr-2">💾</span>
-                    Lưu món ăn
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </Stack>
+          </Box>
+          <Box sx={{ mt: 2 }}>
+            <TextField label="Mô tả món ăn" multiline rows={3} value={form.description} onChange={(e)=>setForm({...form, description: e.target.value})} fullWidth />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button variant="outlined" onClick={() => { if (!saving) setModalOpen(false); }} disabled={saving}>Hủy bỏ</Button>
+          <Button variant="contained" disableElevation onClick={save} disabled={saving} sx={{ textTransform: 'none' }}>{saving ? 'Đang lưu...' : 'Lưu món ăn'}</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Edit Item Modal */}
-      {editOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="w-full max-w-2xl mx-4 rounded-2xl bg-white shadow-2xl">
-            {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+      <Dialog open={editOpen} onClose={() => { if (!editSaving) setEditOpen(false); }} fullWidth maxWidth="md" aria-describedby="edit-item-desc">
+        <DialogTitle>
+          <Stack direction="row" alignItems="center" justifyContent="space-between">
+            <Box>
+              <Typography variant="h6">Chỉnh sửa món ăn</Typography>
+              <Typography variant="caption" color="text.secondary" id="edit-item-desc">Cập nhật thông tin món ăn</Typography>
+            </Box>
+            <IconButton aria-label="Đóng" disabled={editSaving} onClick={() => { if (!editSaving) setEditOpen(false); }}>
+              <XMarkIcon width={18} />
+            </IconButton>
+          </Stack>
+        </DialogTitle>
+        <DialogContent dividers>
+          {editError && (
+            <Typography color="error" variant="body2" sx={{ mb: 2 }}>{String(editError)}</Typography>
+          )}
+          <Box sx={{ display: { xs: 'block', md: 'grid' }, gridTemplateColumns: { md: '1fr 1fr' }, gap: 2 }}>
+            <Stack spacing={2}>
+              <TextField label="Tên món ăn" required value={editForm.name} onChange={(e)=>setEditForm({...editForm, name: e.target.value})} />
+              <TextField label="Giá bán (VNĐ)" type="number" required value={editForm.price} onChange={(e)=>setEditForm({...editForm, price: Number(e.target.value)})} />
+              <Select value={editForm.type} onChange={(e)=>setEditForm({...editForm, type: e.target.value as any})} displayEmpty>
+                <MenuItem value={'food'}>Món ăn</MenuItem>
+                <MenuItem value={'drink'}>Đồ uống</MenuItem>
+              </Select>
+              <Select value={editForm.isActive ? 'true' : 'false'} onChange={(e)=>setEditForm({...editForm, isActive: e.target.value === 'true'})} displayEmpty>
+                <MenuItem value={'true'}>Đang bán</MenuItem>
+                <MenuItem value={'false'}>Tạm dừng</MenuItem>
+              </Select>
+            </Stack>
+            <Stack spacing={2}>
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Chỉnh sửa món ăn</h2>
-                <p className="text-gray-600 text-sm mt-1">Cập nhật thông tin món ăn</p>
+                <Typography variant="body2" sx={{ mb: 1 }}>Hình ảnh món ăn</Typography>
+                <ImageUpload value={editForm.imageUrl} onChange={(imageUrl) => setEditForm({...editForm, imageUrl})} placeholder="Nhấp để chọn hình ảnh món ăn" className="h-32" />
               </div>
-              <button 
-                onClick={() => { if (!editSaving) setEditOpen(false); }}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                disabled={editSaving}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Error Message */}
-            {editError && (
-              <div className="mx-6 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                <div className="flex items-center">
-                  <span className="mr-2">⚠️</span>
-                  {String(editError)}
-                </div>
-              </div>
-            )}
-
-            {/* Form */}
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Basic Info */}
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Tên món ăn *</label>
-                    <input 
-                      value={editForm.name} 
-                      onChange={(e) => setEditForm({...editForm, name: e.target.value})} 
-                      className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Giá bán (VNĐ) *</label>
-                    <input 
-                      type="number" 
-                      value={editForm.price} 
-                      onChange={(e) => setEditForm({...editForm, price: Number(e.target.value)})} 
-                      className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Loại món</label>
-                    <select 
-                      value={editForm.type} 
-                      onChange={(e) => setEditForm({...editForm, type: e.target.value as any})} 
-                      className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors"
-                    >
-                      <option value="food">🍽️ Món ăn</option>
-                      <option value="drink">🥤 Đồ uống</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Trạng thái bán</label>
-                    <select 
-                      value={editForm.isActive ? 'true' : 'false'} 
-                      onChange={(e) => setEditForm({...editForm, isActive: e.target.value === 'true'})} 
-                      className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors"
-                    >
-                      <option value="true">✅ Đang bán</option>
-                      <option value="false">⏸️ Tạm dừng</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Advanced Settings */}
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Hình ảnh món ăn</label>
-                    <ImageUpload
-                      value={editForm.imageUrl}
-                      onChange={(imageUrl) => setEditForm({...editForm, imageUrl})}
-                      placeholder="Nhấp để chọn hình ảnh món ăn"
-                      className="h-32"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Số lượng còn lại</label>
-                    <input 
-                      type="number" 
-                      value={typeof editForm.quantityRemaining === 'number' ? editForm.quantityRemaining : ''} 
-                      onChange={(e) => setEditForm({...editForm, quantityRemaining: e.target.value === '' ? null : Number(e.target.value)})} 
-                      className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors"
-                      placeholder="Để trống nếu không giới hạn"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Danh mục (ID)</label>
-                    <input 
-                      value={editForm.categoryId || ''} 
-                      onChange={(e) => setEditForm({...editForm, categoryId: e.target.value})} 
-                      className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors"
-                      placeholder="ID danh mục (tùy chọn)"
-                    />
-                  </div>
-                </div>
-
-                {/* Description */}
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Mô tả món ăn</label>
-                  <textarea 
-                    value={editForm.description} 
-                    onChange={(e) => setEditForm({...editForm, description: e.target.value})} 
-                    rows={3}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors resize-none"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50 rounded-b-2xl">
-              <button 
-                onClick={() => { if (!editSaving) setEditOpen(false); }}
-                className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                disabled={editSaving}
-              >
-                Hủy bỏ
-              </button>
-              <button 
-                onClick={submitEdit} 
-                className="px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                disabled={editSaving}
-              >
-                {editSaving ? (
-                  <>
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Đang lưu...
-                  </>
-                ) : (
-                  <>
-                    <span className="mr-2">💾</span>
-                    Cập nhật món ăn
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              <TextField label="Số lượng còn lại" type="number" value={typeof editForm.quantityRemaining === 'number' ? editForm.quantityRemaining : ''} onChange={(e)=>setEditForm({...editForm, quantityRemaining: e.target.value === '' ? null : Number(e.target.value)})} placeholder="Để trống nếu không giới hạn" />
+              <TextField label="Danh mục (ID)" value={editForm.categoryId || ''} onChange={(e)=>setEditForm({...editForm, categoryId: e.target.value})} placeholder="ID danh mục (tùy chọn)" />
+            </Stack>
+          </Box>
+          <Box sx={{ mt: 2 }}>
+            <TextField label="Mô tả món ăn" multiline rows={3} value={editForm.description} onChange={(e)=>setEditForm({...editForm, description: e.target.value})} fullWidth />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button variant="outlined" onClick={() => { if (!editSaving) setEditOpen(false); }} disabled={editSaving}>Hủy bỏ</Button>
+          <Button variant="contained" disableElevation onClick={submitEdit} disabled={editSaving} sx={{ textTransform: 'none' }}>{editSaving ? 'Đang lưu...' : 'Cập nhật món ăn'}</Button>
+        </DialogActions>
+      </Dialog>
     </div>
   );
 }

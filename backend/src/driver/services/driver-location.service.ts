@@ -28,7 +28,8 @@ export class DriverLocationService {
       await this.driverModel.findByIdAndUpdate(driverId, {
         location: [longitude, latitude], // MongoDB uses [lng, lat] format
         lastLocationAt: new Date(),
-        locationType: 'Point'
+        locationType: 'Point',
+        status: 'active'
       });
 
       this.logger.log(`Updated location for driver ${driverId}: ${latitude}, ${longitude}`);

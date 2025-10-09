@@ -3,7 +3,8 @@ import { ApiTags, ApiBearerAuth, ApiBody, ApiOkResponse, ApiCreatedResponse } fr
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { Response } from 'express';
-import { LoginRequestDto, LoginResponseDto, RefreshResponseDto, UserDto } from './dto/auth.dto';
+import { LoginRequestDto, LoginResponseDto, RefreshResponseDto, RegisterDto } from './dto/auth.dto';
+import { UserDto } from '../user/dto/user.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -79,22 +80,10 @@ export class AuthController {
   }
 
   @Post('register')
-  @ApiBody({ 
-    schema: {
-      type: 'object',
-      properties: {
-        email: { type: 'string', format: 'email' },
-        password: { type: 'string', minLength: 6 },
-        name: { type: 'string' },
-        phone: { type: 'string' },
-        role: { type: 'string', enum: ['customer', 'restaurant', 'driver'] }
-      },
-      required: ['email', 'password', 'name', 'phone', 'role']
-    }
-  })
+  @ApiBody({ type: RegisterDto })
   @ApiCreatedResponse({ type: LoginResponseDto })
-  async register(@Body() body: any, @Res({ passthrough: true }) res: Response) {
-    const result = await this.auth.register(body.email, body.password, body.name, body.phone, body.role);
+  async register(@Body() body: RegisterDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.auth.register(body.email, body.password, body.name, body.phone as any, body.role);
     
     // Set HttpOnly cookies
     res.cookie('access_token', result.access_token, {

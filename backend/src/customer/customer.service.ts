@@ -2,20 +2,20 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Customer, CustomerDocument } from './schemas/customer.schema';
-import { User, UserDocument } from '../user/schemas/user.schema';
+import { UserService } from '../user/user.service';
 
 @Injectable()
 export class CustomerService {
   constructor(
     @InjectModel(Customer.name) private customerModel: Model<CustomerDocument>,
-    @InjectModel(User.name) private userModel: Model<UserDocument>,
+    private readonly users: UserService,
   ) {}
 
   // Create customer profile
   async createCustomer(userId: string, customerData: Partial<Customer>): Promise<Customer> {
     try {
       // Check if user exists
-      const user = await this.userModel.findById(userId);
+      const user = await this.users.findByIdLean(userId);
       if (!user) {
         throw new NotFoundException('User not found');
       }

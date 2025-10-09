@@ -1,20 +1,23 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
-import { TypeOrmModule } from "@nestjs/typeorm";
+import configuration from "./config/configuration";
+// validation schema removed to avoid runtime dependency on joi
+// import * as Joi from "joi";
+// import { TypeOrmModule } from "@nestjs/typeorm";
 import { ScheduleModule } from "@nestjs/schedule";
 import { AuthModule } from "./auth/auth.module";
 import { UserModule } from "./user/user.module";
 import { RestaurantModule } from "./restaurant/restaurant.module";
 import { OrderModule } from "./order/order.module";
 import { PaymentModule } from "./payment/payment.module";
-import { NotificationModule as NotificationsModule } from "./notifications/notification.module";
-import { NotificationModule as WsNotificationModule } from "./notification/notification.module";
+import { NotificationModule as NotificationModule } from "./notification/notification.module";
 import { DatabaseModule } from "./database/database.module";
 import { HealthController } from "./health.controller";
 import { DriverModule } from "./driver/driver.module";
 import { AdminModule } from "./admin/admin.module";
-import { SearchModule } from "./database/mongo.module";
+import { MongoModule } from "./database/mongo.module";
 import { CommonModule } from "./common/common.module";
+import { WalletModule } from "./wallet/wallet.module";
 import { CartModule } from "./cart/cart.module";
 import { CustomerModule } from "./customer/customer.module";
 import { DemoModule } from "./demo/demo.module";
@@ -26,6 +29,7 @@ import { DbReadinessGuard } from "./common/guards/db-readiness.guard";
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      load: [configuration],
     }),
     ScheduleModule.forRoot(),
     DatabaseModule,
@@ -36,14 +40,14 @@ import { DbReadinessGuard } from "./common/guards/db-readiness.guard";
     AdminModule,
     OrderModule,
     PaymentModule,
-    NotificationsModule,
-    WsNotificationModule,
-    SearchModule,
+    NotificationModule,
+    MongoModule,
     CommonModule,
     CartModule,
     CustomerModule,
     DemoModule,
     CategoryModule,
+    WalletModule,
   ],
   controllers: [HealthController],
   providers: [

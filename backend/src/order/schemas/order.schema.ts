@@ -76,6 +76,19 @@ export class Order {
   @Prop({ default: '' })
   specialInstructions: string;
 
+  // Recipient and purchaser contact info
+  @Prop({ default: '' })
+  recipientName?: string;
+
+  @Prop({ default: '' })
+  recipientPhonePrimary?: string;
+
+  @Prop({ default: '' })
+  recipientPhoneSecondary?: string;
+
+  @Prop({ default: '' })
+  purchaserPhone?: string;
+
   @Prop({ enum: PaymentMethod, required: true })
   paymentMethod: PaymentMethod;
 

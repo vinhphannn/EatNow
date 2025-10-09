@@ -1,8 +1,6 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { User, UserDocument } from './schemas/user.schema';
+import { UserService } from './user.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -13,9 +11,7 @@ import { UserRole } from './schemas/user.schema';
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class UserController {
-  constructor(
-    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
-  ) {}
+  constructor(private readonly users: UserService) {}
 
   @Get('profile')
   async getProfile(@Request() req: any) {
@@ -25,7 +21,7 @@ export class UserController {
       throw new Error('User ID not found in request');
     }
     
-    const user = await this.userModel.findById(userId).lean() as any;
+    const user = await this.users.findByIdLean(userId) as any;
     
     if (!user) {
       throw new Error('User not found');
@@ -98,11 +94,8 @@ export class UserController {
       throw new Error('User ID not found in request');
     }
     
-    const user = await this.userModel.findByIdAndUpdate(
-      userId,
-      { ...updateData, updatedAt: new Date() },
-      { new: true }
-    ).lean() as any;
+    const updated = await this.users.updateProfileById(String(userId), updateData);
+    const user = updated as any;
     
     if (!user) {
       throw new Error('User not found');
@@ -143,7 +136,7 @@ export class UserController {
       throw new Error('User ID not found in request');
     }
     
-    const user = await this.userModel.findById(userId).lean() as any;
+    const user = await this.users.findByIdLean(userId) as any;
     
     if (!user) {
       throw new Error('User not found');
@@ -184,40 +177,15 @@ export class UserController {
   @Post('addresses')
   async addAddress(@Request() req: any, @Body() addressData: any) {
     const userId = req.user.userId;
-    
-    const user = await this.userModel.findById(userId) as any;
-    
-    if (!user) {
-      throw new Error('User not found');
-    }
-
-    // Set other addresses as non-default if this is default
-    if (addressData.isDefault) {
-      user.addresses.forEach(addr => addr.isDefault = false);
-    }
-
-    user.addresses.push({
-      ...addressData,
-      isActive: true,
-    });
-
-    await user.save();
-
-    return {
-      message: 'Address added successfully',
-      addresses: user.addresses,
-    };
+    const addresses = await this.users.addAddress(userId, addressData);
+    return { message: 'Address added successfully', addresses };
   }
 
   @Put('preferences')
   async updatePreferences(@Request() req: any, @Body() preferences: any) {
     const userId = req.user.userId;
     
-    const user = await this.userModel.findByIdAndUpdate(
-      userId,
-      { ...preferences, updatedAt: new Date() },
-      { new: true }
-    ).lean() as any;
+    const user = await this.users.updatePreferences(userId, preferences) as any;
     
     if (!user) {
       throw new Error('User not found');

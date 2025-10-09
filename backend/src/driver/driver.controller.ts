@@ -14,6 +14,13 @@ export class DriverController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('mine/wallet')
+  async getMyWallet(@Req() req: any) {
+    const userId = req.user?.id;
+    return this.driverService.getWalletForUser(userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Put('me/location')
   async updateMyLocation(@Req() req: any, @Body() body: { lat: number; lng: number }) {
     return this.driverService.updateLocationByUser(req.user?.id, body.lat, body.lng);

@@ -72,7 +72,7 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
       this.redisKV = new IORedis(url);
       this.server.adapter(createAdapter(this.redisPub, this.redisSub));
       this.redisEnabled = true;
-      console.log('[WS] Redis adapter enabled');
+      // redis adapter enabled
     } catch (e) {
       console.warn('[WS] Redis adapter not enabled:', (e && e.message) || e);
       this.redisEnabled = false;
@@ -83,9 +83,7 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
     if (!this.metricsTimer) {
       this.metricsTimer = setInterval(() => {
         try {
-          console.log(
-            `[WS Metrics] users=${this.userRooms.size} restaurants=${this.restaurantRooms.size} drivers=${this.driverRooms.size} driverLocEvents=${this.metrics.driverLocationEvents} reassignTimeout=${this.metrics.driverReassignments.timeout} reassignReject=${this.metrics.driverReassignments.reject} ordersAssigned=${this.metrics.orders.assigned} ordersCompleted=${this.metrics.orders.completed} ordersCancelled=${this.metrics.orders.cancelled}`
-          );
+          // metrics log disabled in production
           this.metrics.driverLocationEvents = 0;
           this.metrics.driverReassignments.timeout = 0;
           this.metrics.driverReassignments.reject = 0;
@@ -106,45 +104,36 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
       const headerAuth = client.handshake.headers['authorization'] as string | undefined;
       const token = tokenFromAuth || (headerAuth && headerAuth.startsWith('Bearer ') ? headerAuth.substring(7) : undefined);
 
-      if (!token) {
-        console.warn(`Socket ${client.id} missing auth token - disconnecting`);
-        client.disconnect(true);
-        return;
+      let userId: string | undefined;
+      let role: string | undefined;
+      if (token) {
+        try {
+          const payload: any = await this.jwtService.verifyAsync(token);
+          userId = String(payload.sub || payload.id);
+          role = payload.role;
+          (client as any).userId = userId;
+          (client as any).role = role;
+          // Clean up any existing connections for this user
+          if (userId) this.cleanupUserConnections(userId);
+          // Auto-join default rooms if role is known
+          if (role === 'restaurant' || role === 'owner' || role === 'admin_restaurant') {
+            const restaurant = await this.restaurantModel.findOne({ ownerUserId: new Types.ObjectId(userId) }).lean();
+            if (restaurant?._id) this.joinRestaurantRoom(client, String(restaurant._id));
+          } else if (role === 'customer' || role === 'admin' || role === 'user') {
+            if (userId) this.joinUserRoom(client, userId);
+          } else if (role === 'driver') {
+            if (userId) this.joinDriverRoom(client, userId);
+          }
+        } catch (e) {
+          // Allow connection without token; client can join rooms via explicit events
+        }
       }
-
-      const payload: any = await this.jwtService.verifyAsync(token);
-      const userId: string = String(payload.sub || payload.id);
-      const role: string | undefined = payload.role;
-
-      // Store user info in socket for cleanup
-      (client as any).userId = userId;
-      (client as any).role = role;
-
-      // Clean up any existing connections for this user
-      this.cleanupUserConnections(userId);
 
       // Start periodic timers once at first connection
       this.startTimers();
-
-      // Join rooms based on role
-      if (role === 'restaurant' || role === 'owner' || role === 'admin_restaurant') {
-        // Find restaurant by owner user id
-        const restaurant = await this.restaurantModel.findOne({ ownerUserId: new Types.ObjectId(userId) }).lean();
-        if (restaurant?._id) {
-          this.joinRestaurantRoom(client, String(restaurant._id));
-        }
-      } else if (role === 'customer' || role === 'admin' || role === 'user') {
-        // Join personal user room
-        this.joinUserRoom(client, userId);
-      } else if (role === 'driver') {
-        // Treat JWT subject as driver user id for rooming
-        this.joinDriverRoom(client, userId);
-      }
-
-      console.log(`Client connected: ${client.id} user=${userId} role=${role}`);
+      // connection log disabled
     } catch (err) {
-      console.warn(`Socket ${client.id} auth error - disconnecting`, err?.message || err);
-      client.disconnect(true);
+      console.warn(`Socket ${client.id} connection error`, err?.message || err);
     }
   }
 
@@ -152,13 +141,13 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
     const userId = (client as any).userId;
     const role = (client as any).role;
     
-    console.log(`Client disconnected: ${client.id} user=${userId} role=${role}`);
+    // disconnect log disabled
     
     // Remove from restaurant rooms
     for (const [restaurantId, socketId] of this.restaurantRooms.entries()) {
       if (socketId === client.id) {
         this.restaurantRooms.delete(restaurantId);
-        console.log(`Restaurant ${restaurantId} left room`);
+        // room leave log disabled
         break;
       }
     }
@@ -167,7 +156,7 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
     for (const [uid, socketId] of this.userRooms.entries()) {
       if (socketId === client.id) {
         this.userRooms.delete(uid);
-        console.log(`User ${uid} left room`);
+        // room leave log disabled
         break;
       }
     }
@@ -176,7 +165,7 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
     for (const [driverId, socketId] of this.driverRooms.entries()) {
       if (socketId === client.id) {
         this.driverRooms.delete(driverId);
-        console.log(`Driver ${driverId} left room`);
+        // room leave log disabled
         // Cleanup driver state
         this.lastDriverLocation.delete(driverId);
         this.driverRate.delete(driverId);
@@ -193,7 +182,7 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
     for (const socket of connectedClients) {
       const socketUserId = (socket as any).userId;
       if (socketUserId === userId) {
-        console.log(`Cleaning up existing connection for user ${userId}: ${socket.id}`);
+        // cleanup log disabled
         socket.disconnect(true);
       }
     }
@@ -203,32 +192,32 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
   joinRestaurantRoom(client: Socket, restaurantId: string) {
     client.join(`restaurant:${restaurantId}`);
     this.restaurantRooms.set(restaurantId, client.id);
-    console.log(`Restaurant ${restaurantId} joined room: restaurant:${restaurantId}`);
+    // join log disabled
   }
 
   // User joins their room
   joinUserRoom(client: Socket, userId: string) {
     client.join(`user:${userId}`);
     this.userRooms.set(userId, client.id);
-    console.log(`User ${userId} joined room: user:${userId}`);
+    // join log disabled
   }
 
   // Driver joins their room
   joinDriverRoom(client: Socket, driverId: string) {
     client.join(`driver:${driverId}`);
     this.driverRooms.set(driverId, client.id);
-    console.log(`Driver ${driverId} joined room: driver:${driverId}`);
+    // join log disabled
   }
 
   // Order room helpers (temporary tri-party room)
   joinOrderRoom(client: Socket, orderId: string) {
     client.join(`order:${orderId}`);
-    console.log(`Socket ${client.id} joined room: order:${orderId}`);
+    // join log disabled
   }
 
   leaveOrderRoom(client: Socket, orderId: string) {
     client.leave(`order:${orderId}`);
-    console.log(`Socket ${client.id} left room: order:${orderId}`);
+    // leave log disabled
   }
 
   @SubscribeMessage('join_restaurant')
@@ -245,14 +234,14 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
   handleLeaveRestaurant(client: Socket, restaurantId: string) {
     client.leave(`restaurant:${restaurantId}`);
     this.restaurantRooms.delete(restaurantId);
-    console.log(`Restaurant ${restaurantId} left room`);
+    // leave log disabled
   }
 
   @SubscribeMessage('leave_user')
   handleLeaveUser(client: Socket, userId: string) {
     client.leave(`user:${userId}`);
     this.userRooms.delete(userId);
-    console.log(`User ${userId} left room`);
+    // leave log disabled
   }
 
   @SubscribeMessage('join_driver')
@@ -298,7 +287,7 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
       order: order,
       timestamp: new Date().toISOString()
     });
-    console.log(`Notified restaurant ${restaurantId} about new order`);
+    // notification log disabled
   }
 
   // Notify restaurant about order status update
@@ -318,7 +307,22 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
       status,
       timestamp: new Date().toISOString(),
     });
-    console.log(`Notified restaurant ${restaurantId} about order update`);
+    // notification log disabled
+  }
+
+  // Minimal status event to both driver and restaurant rooms
+  emitOrderStatusChangedMinimal(params: { driverId?: string | null; restaurantId?: string | null; orderId: string; status: string; updatedAt?: string | Date }) {
+    const payload = {
+      orderId: params.orderId,
+      status: params.status,
+      updatedAt: (params.updatedAt || new Date()).toString(),
+    };
+    if (params.driverId) {
+      this.server.to(`driver:${params.driverId}`).emit('order_status_changed', payload);
+    }
+    if (params.restaurantId) {
+      this.server.to(`restaurant:${params.restaurantId}`).emit('order_status_changed', payload);
+    }
   }
 
   // Notify restaurant about order cancellation
@@ -329,7 +333,7 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
       order: orderData,
       timestamp: new Date().toISOString()
     });
-    console.log(`Notified restaurant ${restaurantId} about order cancellation`);
+    // notification log disabled
   }
 
   // Notify customer about order status update
@@ -342,7 +346,7 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
       order: order,
       timestamp: new Date().toISOString()
     });
-    console.log(`Notified user ${userId} about order ${orderId} status: ${status}`);
+    // notification log disabled
   }
 
   // Notify a specific driver about assignment
@@ -353,7 +357,7 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
       order,
       timestamp: new Date().toISOString()
     });
-    console.log(`Notified driver ${driverId} about new assignment`);
+    // notification log disabled
   }
 
   // Get user-friendly status message
@@ -386,9 +390,9 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
         data: locationData,
         timestamp: new Date()
       });
-      console.log(`Sent driver location update to user ${userId}`);
+      // location update log disabled
     } else {
-      console.log(`User ${userId} not connected to WebSocket`);
+      // user not connected log disabled
     }
   }
 

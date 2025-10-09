@@ -16,14 +16,7 @@ export default function CartPage() {
   const token = user ? 'cookie-auth' : null; // Dummy token for cookie auth
   const { data: cartData, loading: cartLoading, error: cartError } = useCart(token);
   
-  // Debug logs
-  console.log('Cart page data:', {
-    user,
-    token: token ? 'exists' : 'missing',
-    cartData,
-    cartLoading,
-    cartError
-  });
+  // Debug logs removed
   
   const [cartItems, setCartItems] = useState<any[]>([]);
   const [summary, setSummary] = useState<{ subtotal: number; deliveryFee: number; serviceFee: number; total: number }>({ subtotal: 0, deliveryFee: 0, serviceFee: 0, total: 0 });
@@ -37,10 +30,14 @@ export default function CartPage() {
   const [customAddress, setCustomAddress] = useState<string>('');
   const [deliveryFees, setDeliveryFees] = useState<{[key: string]: number}>({});
   const [deliveryDistances, setDeliveryDistances] = useState<{[key: string]: number}>({});
+  const [selectedItemIds, setSelectedItemIds] = useState<Record<string, boolean>>({});
+  const [recipientName, setRecipientName] = useState<string>('');
+  const [recipientPhonePrimary, setRecipientPhonePrimary] = useState<string>('');
+  const [recipientPhoneSecondary, setRecipientPhoneSecondary] = useState<string>('');
+  const [purchaserPhone, setPurchaserPhone] = useState<string>('');
 
   // Load cart data from database
   useEffect(() => {
-    console.log('Cart data received:', cartData);
     if (cartData && Array.isArray(cartData)) {
       setCartItems(cartData);
     } else if (cartData && (cartData as any).items && Array.isArray((cartData as any).items)) {
@@ -49,6 +46,15 @@ export default function CartPage() {
       setCartItems([]);
     }
   }, [cartData]);
+
+  // Initialize selection (default: select all items)
+  useEffect(() => {
+    const next: Record<string, boolean> = {};
+    for (const it of cartItems) {
+      if (it?.id) next[it.id] = true;
+    }
+    setSelectedItemIds(next);
+  }, [cartItems]);
 
   // Load summary and address
   useEffect(() => {
@@ -77,15 +83,27 @@ export default function CartPage() {
           setSelectedAddress(defaultAddr);
           setDeliveryAddress(defaultAddr.addressLine);
         }
+        // Prefill phones from profile
+        if (!purchaserPhone) setPurchaserPhone(profile.phone || '');
+        if (!recipientPhonePrimary) setRecipientPhonePrimary(profile.phone || '');
       } catch {}
     };
     if (user) load();
   }, [user, cartItems.length]);
 
-  // Calculate delivery fees when address changes
+  // Prefill recipient/purchaser info from profile when available
+  useEffect(() => {
+    if (user) {
+      // Fallbacks: prefer profile info from userService.getProfile if available; here use name only
+      setRecipientName((prev) => prev || user.name || '');
+      // Phone not available on auth user type; keep previous or empty
+    }
+  }, [user]);
+
+  // Calculate delivery fees when address/selection changes
   useEffect(() => {
     calculateAllDeliveryFees();
-  }, [selectedAddress, customAddress, cartItems]);
+  }, [selectedAddress, customAddress, cartItems, selectedItemIds]);
 
   const updateQuantity = async (cartItemId: string, newQuantity: number) => {
     if (!token) return;
@@ -97,10 +115,28 @@ export default function CartPage() {
     
     try {
       await cartService.updateCartItem(cartItemId, { quantity: newQuantity }, token);
-      // Refresh cart data
-      window.location.reload();
+      // Optimistically update cart items in place (no full reload)
+      setCartItems((prev) => prev.map((ci) => {
+        if (ci.id !== cartItemId) return ci;
+        const itemData = ci.item || ci;
+        const unitPrice = itemData.price || 0;
+        const updated = {
+          ...ci,
+          quantity: newQuantity,
+          subtotal: unitPrice * newQuantity
+        };
+        return updated;
+      }));
+      // Recalculate summary after quantity change
+      try {
+        const s = await cartService.getCartSummary('cookie-auth');
+        const subtotal = (s as any)?.subtotal ?? 0;
+        const deliveryFee = (s as any)?.deliveryFee ?? 0;
+        const serviceFee = (s as any)?.serviceFee ?? 0;
+        const total = (s as any)?.total ?? (subtotal + deliveryFee + serviceFee);
+        setSummary({ subtotal, deliveryFee, serviceFee, total });
+      } catch {}
     } catch (error) {
-      console.error('Error updating quantity:', error);
       alert('Có lỗi xảy ra khi cập nhật số lượng');
     }
   };
@@ -110,20 +146,37 @@ export default function CartPage() {
     
     try {
       await cartService.removeFromCart(cartItemId, token);
-      // Refresh cart data
-      window.location.reload();
+      // Update UI without full reload
+      setCartItems((prev) => prev.filter((ci) => ci.id !== cartItemId));
+      // Recalculate summary after removal
+      try {
+        const s = await cartService.getCartSummary('cookie-auth');
+        const subtotal = (s as any)?.subtotal ?? 0;
+        const deliveryFee = (s as any)?.deliveryFee ?? 0;
+        const serviceFee = (s as any)?.serviceFee ?? 0;
+        const total = (s as any)?.total ?? (subtotal + deliveryFee + serviceFee);
+        setSummary({ subtotal, deliveryFee, serviceFee, total });
+      } catch {}
     } catch (error) {
-      console.error('Error removing item:', error);
       alert('Có lỗi xảy ra khi xóa món ăn');
     }
   };
 
   const getSubtotal = () => {
-    return cartItems.reduce((total, item) => total + (item.subtotal || (item.item?.price * item.quantity) || 0), 0);
+    return cartItems.reduce((total, item) => {
+      if (!selectedItemIds[item.id]) return total;
+      return total + (item.subtotal || (item.item?.price * item.quantity) || 0);
+    }, 0);
   };
 
   const getTotalDeliveryFee = () => {
-    return Object.values(deliveryFees).reduce((total, fee) => total + fee, 0);
+    const groups = groupItemsByRestaurant();
+    let total = 0;
+    Object.entries(groups).forEach(([restaurantId, items]) => {
+      const hasSelected = items.some((it) => selectedItemIds[it.id]);
+      if (hasSelected) total += Number(deliveryFees[restaurantId] || 0);
+    });
+    return total;
   };
 
   const getTotal = () => {
@@ -141,7 +194,6 @@ export default function CartPage() {
       const restaurantName = item.restaurant?.name || item.restaurantName;
       
       if (!restaurantId) {
-        console.error('Missing restaurant ID for item:', item);
         return; // Skip items without restaurant ID
       }
       
@@ -153,11 +205,7 @@ export default function CartPage() {
       groups[key].push(item);
     });
     
-    console.log('Restaurant groups:', Object.keys(groups).map(key => ({
-      restaurantId: key,
-      itemCount: groups[key].length,
-      restaurantName: groups[key][0]?.restaurant?.name || groups[key][0]?.restaurantName
-    })));
+    // group summary removed
     
     return groups;
   };
@@ -192,12 +240,10 @@ export default function CartPage() {
   // Calculate delivery fees and distances for all restaurants
   const calculateAllDeliveryFees = () => {
     if (!selectedAddress && !customAddress.trim()) {
-      console.log('No address selected, skipping delivery fee calculation');
       return;
     }
 
     if (cartItems.length === 0) {
-      console.log('No cart items, skipping delivery fee calculation');
       return;
     }
 
@@ -207,9 +253,11 @@ export default function CartPage() {
     const newDeliveryFees: {[key: string]: number} = {};
     const newDeliveryDistances: {[key: string]: number} = {};
     
-    console.log('Calculating delivery fees for restaurants:', Object.keys(currentRestaurantGroups));
+    // calculating delivery fees
     
     Object.entries(currentRestaurantGroups).forEach(([restaurantKey, items]) => {
+      // Skip restaurants without any selected item
+      if (!items.some((it) => selectedItemIds[it.id])) return;
       const restaurant = items[0].restaurant;
       if (restaurant?.coordinates) {
         const distance = calculateDistance(
@@ -220,18 +268,34 @@ export default function CartPage() {
         );
         newDeliveryDistances[restaurantKey] = distance;
         newDeliveryFees[restaurantKey] = calculateDeliveryFee(distance);
-        console.log(`Restaurant ${restaurantKey}: distance=${distance}km, fee=${newDeliveryFees[restaurantKey]}đ`);
+        // distance/fee computed
       } else {
         // Fallback: assume 5km distance if no coordinates
         newDeliveryDistances[restaurantKey] = 5;
         newDeliveryFees[restaurantKey] = 5000;
-        console.log(`Restaurant ${restaurantKey}: no coordinates, using fallback distance=5km, fee=5000đ`);
+        // fallback used
       }
     });
     
     setDeliveryFees(newDeliveryFees);
     setDeliveryDistances(newDeliveryDistances);
-    console.log('Delivery fees calculated:', newDeliveryFees);
+    // fees calculated
+  };
+
+  // Selection handlers
+  const toggleRestaurantSelection = (restaurantId: string, checked: boolean) => {
+    const items = groupItemsByRestaurant()[restaurantId] || [];
+    setSelectedItemIds((prev) => {
+      const next = { ...prev } as Record<string, boolean>;
+      for (const it of items) {
+        if (it.id) next[it.id] = checked;
+      }
+      return next;
+    });
+  };
+
+  const toggleItemSelection = (itemId: string, checked: boolean) => {
+    setSelectedItemIds((prev) => ({ ...prev, [itemId]: checked }));
   };
 
   // Toast notification function
@@ -284,12 +348,14 @@ export default function CartPage() {
       // Group items by restaurant
       const restaurantGroups = groupItemsByRestaurant();
       
-      // Create orders for each restaurant - CRITICAL: Each restaurant gets separate order
+      // Create orders for each restaurant - only with selected items
       const orderPromises = Object.entries(restaurantGroups).map(async ([restaurantId, items]) => {
+        const selectedItems = items.filter((it) => selectedItemIds[it.id]);
+        if (selectedItems.length === 0) return null;
         const restaurantName = items[0].restaurant?.name || items[0].restaurantName;
         
         // Calculate totals for THIS restaurant only
-        const subtotal = items.reduce((total, item) => {
+        const subtotal = selectedItems.reduce((total, item) => {
           const itemSubtotal = item.subtotal || (item.item?.price * item.quantity) || (item.price * item.quantity);
           return total + (itemSubtotal || 0);
         }, 0);
@@ -309,10 +375,10 @@ export default function CartPage() {
               restaurant.coordinates.lng
             );
             deliveryFee = calculateDeliveryFee(distance);
-            console.log(`Calculated delivery fee on-the-fly: ${deliveryFee}đ for distance ${distance}km`);
+            // calculated on-the-fly
           } else {
             deliveryFee = 5000; // Fallback
-            console.log(`Using fallback delivery fee: ${deliveryFee}đ`);
+            // using fallback
           }
         }
         
@@ -320,19 +386,13 @@ export default function CartPage() {
         
         // Validate calculations
         if (isNaN(subtotal) || isNaN(deliveryFee) || isNaN(finalTotal)) {
-          console.error('Invalid calculation:', { subtotal, deliveryFee, finalTotal, restaurantId });
           throw new Error(`Invalid calculation for restaurant ${restaurantId}`);
         }
         
-        console.log(`Creating order for restaurant: ${restaurantName} (${restaurantId})`);
-        console.log(`- Items: ${items.length}`);
-        console.log(`- Subtotal: ${subtotal}đ`);
-        console.log(`- Delivery fee: ${deliveryFee}đ`);
-        console.log(`- Final total: ${finalTotal}đ`);
         
         const orderData = {
           restaurantId, // This ensures order goes to correct restaurant
-          items: items.map(item => ({
+          items: selectedItems.map(item => ({
             itemId: item.item?.id || item.itemId,
             name: item.item?.name || item.name,
             price: item.item?.price || item.price,
@@ -356,6 +416,10 @@ export default function CartPage() {
           deliveryDistance: deliveryDistances[restaurantId] || 0,
           deliveryFee: deliveryFee,
           total: subtotal,
+          recipientName: recipientName?.trim() || undefined,
+          recipientPhonePrimary: recipientPhonePrimary?.trim() || undefined,
+          recipientPhoneSecondary: recipientPhoneSecondary?.trim() || undefined,
+          purchaserPhone: purchaserPhone?.trim() || undefined,
           paymentMethod,
           promoCode: promoCode.trim() || undefined,
           finalTotal: finalTotal
@@ -364,7 +428,7 @@ export default function CartPage() {
         return apiClient.post(`/api/v1/orders`, orderData);
       });
 
-      const orders = await Promise.all(orderPromises);
+      const orders = (await Promise.all(orderPromises)).filter(Boolean);
       
       // Show success message with detailed order information
       const orderDetails = orders.map((order: any, index: number) => {
@@ -383,21 +447,31 @@ export default function CartPage() {
       
       showToast(message, 'success');
       
-      console.log('Orders created successfully:', orders.map((order: any) => ({
-        orderCode: order.orderCode || order.id,
-        restaurantId: order.restaurantId,
-        total: order.total,
-        deliveryFee: order.deliveryFee,
-        finalTotal: order.finalTotal
-      })));
+      
 
-      // Clear cart
+      // Remove only ordered (selected) items from cart UI without full reload
       try {
-        await apiClient.delete(`/api/v1/cart`);
-        localStorage.removeItem('cart');
-      } catch (error) {
-        console.error('Error clearing cart:', error);
-      }
+        const orderedIdSet = new Set<string>();
+        Object.entries(restaurantGroups).forEach(([restaurantId, items]) => {
+          items.forEach((it: any) => { if (selectedItemIds[it.id]) orderedIdSet.add(it.id); });
+        });
+        setCartItems((prev) => prev.filter((ci) => !orderedIdSet.has(ci.id)));
+        // Clear selection for removed items
+        setSelectedItemIds((prev) => {
+          const next = { ...prev } as Record<string, boolean>;
+          orderedIdSet.forEach((id) => { delete next[id]; });
+          return next;
+        });
+        // Recalculate summary after removal
+        try {
+          const s = await cartService.getCartSummary('cookie-auth');
+          const subtotal = (s as any)?.subtotal ?? 0;
+          const deliveryFee = (s as any)?.deliveryFee ?? 0;
+          const serviceFee = (s as any)?.serviceFee ?? 0;
+          const total = (s as any)?.total ?? (subtotal + deliveryFee + serviceFee);
+          setSummary({ subtotal, deliveryFee, serviceFee, total });
+        } catch {}
+      } catch {}
 
       // Redirect to orders page after 3 seconds (longer for multiple orders)
       setTimeout(() => {
@@ -405,7 +479,6 @@ export default function CartPage() {
       }, 3000);
 
     } catch (error: any) {
-      console.error('Error placing order:', error);
       
       if (error.response?.status === 401) {
         showToast('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', 'error');
@@ -522,6 +595,12 @@ export default function CartPage() {
                 {/* Restaurant Header */}
                 <div className="p-4 border-b border-gray-100">
                   <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={items.every((it:any) => selectedItemIds[it.id])}
+                      onChange={(e) => toggleRestaurantSelection(restaurantKey, e.target.checked)}
+                      className="mr-3 w-5 h-5 accent-orange-600"
+                    />
                     <div className="w-10 h-10 bg-gradient-to-r from-orange-400 to-pink-400 rounded-full flex items-center justify-center mr-3">
                       <span className="text-white font-bold text-sm">
                         {restaurantName.charAt(0)}
@@ -558,6 +637,12 @@ export default function CartPage() {
                     
                     return (
                       <div key={item.id} className="flex items-start space-x-4">
+                        <input
+                          type="checkbox"
+                          checked={!!selectedItemIds[item.id]}
+                          onChange={(e) => toggleItemSelection(item.id, e.target.checked)}
+                          className="mt-2 w-5 h-5 accent-orange-600"
+                        />
                         {/* Item Image */}
                         <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 bg-gradient-to-br from-orange-100 to-red-100 flex items-center justify-center">
                           {itemImage ? (
@@ -665,8 +750,8 @@ export default function CartPage() {
             {/* Order Details */}
             <div className="space-y-3 mb-6">
               <div className="flex justify-between text-gray-600">
-                <span>Tạm tính ({cartItems.length} món)</span>
-                <span>{(summary.subtotal || getSubtotal()).toLocaleString('vi-VN')}đ</span>
+                <span>Tạm tính ({cartItems.filter(it => selectedItemIds[it.id]).length} món)</span>
+                <span>{getSubtotal().toLocaleString('vi-VN')}đ</span>
               </div>
               <div className="flex justify-between text-gray-600">
                 <span>Phí giao hàng</span>
@@ -675,6 +760,43 @@ export default function CartPage() {
               <div className="flex justify-between text-gray-600">
                 <span>Phí dịch vụ</span>
                 <span>{(summary.serviceFee || 0).toLocaleString('vi-VN')}đ</span>
+              </div>
+
+              {/* Recipient Info */}
+              <div className="pt-4 border-t border-gray-200">
+                <p className="text-sm font-semibold text-gray-900 mb-2">Thông tin người nhận</p>
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    placeholder="Tên người nhận"
+                    value={recipientName}
+                    onChange={(e) => setRecipientName(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <input
+                      type="tel"
+                      placeholder="SĐT người nhận (chính)"
+                      value={recipientPhonePrimary}
+                      onChange={(e) => setRecipientPhonePrimary(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                    />
+                    <input
+                      type="tel"
+                      placeholder="SĐT người nhận (phụ, tùy chọn)"
+                      value={recipientPhoneSecondary}
+                      onChange={(e) => setRecipientPhoneSecondary(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                    />
+                  </div>
+                  <input
+                    type="tel"
+                    placeholder="SĐT người đặt (mặc định lấy từ tài khoản)"
+                    value={purchaserPhone}
+                    onChange={(e) => setPurchaserPhone(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  />
+                </div>
               </div>
               
               {/* Restaurant Breakdown - Shows how orders will be split */}
@@ -692,8 +814,10 @@ export default function CartPage() {
                     </p>
                   </div>
                   {Object.entries(restaurantGroups).map(([restaurantId, items], index) => {
+                    const filtered = items.filter((it) => selectedItemIds[it.id]);
+                    if (filtered.length === 0) return null;
                     const restaurantName = items[0].restaurant?.name || items[0].restaurantName;
-                    const restaurantTotal = items.reduce((total, item) => total + (item.subtotal || (item.item?.price * item.quantity) || (item.price * item.quantity)), 0);
+                    const restaurantTotal = filtered.reduce((total, item) => total + (item.subtotal || (item.item?.price * item.quantity) || (item.price * item.quantity)), 0);
                     const restaurantDeliveryFee = deliveryFees[restaurantId] || 0;
                     const restaurantFinalTotal = restaurantTotal + restaurantDeliveryFee;
                     return (
@@ -707,7 +831,7 @@ export default function CartPage() {
                           </span>
                         </div>
                         <div className="flex justify-between text-xs text-gray-500 ml-2">
-                          <span>• {items.length} món</span>
+                          <span>• {filtered.length} món</span>
                           <span>{restaurantTotal.toLocaleString('vi-VN')}đ</span>
                         </div>
                         <div className="flex justify-between text-xs text-gray-500 ml-2">

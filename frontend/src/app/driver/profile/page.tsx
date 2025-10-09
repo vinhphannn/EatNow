@@ -2,6 +2,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useDriverAuth } from "@/contexts/AuthContext";
+import { useDriverWallet } from "@/hooks/useDriverWallet";
+import WalletCard from "@/components/WalletCard";
 
 interface DriverProfile {
   name: string;
@@ -35,6 +37,7 @@ export default function DriverProfilePage() {
   const [message, setMessage] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ [k: string]: boolean }>({});
   const router = useRouter();
+  const { wallet, loading: walletLoading } = useDriverWallet();
 
   useEffect(() => {
     if (isAuthenticated && !authLoading) {
@@ -203,6 +206,9 @@ export default function DriverProfilePage() {
           </div>
         </div>
         
+        {/* Wallet */}
+        {!walletLoading && <div className="mt-4"><WalletCard title="Ví tài xế" wallet={wallet as any} /></div>}
+
         {/* Profile Stats */}
         <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="card p-4 text-center">

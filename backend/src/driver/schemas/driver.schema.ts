@@ -65,6 +65,21 @@ export class Driver {
   @Prop({ default: 0 })
   performanceScore: number;
 
+  // Auto simulation mode for development/testing
+  @Prop({ default: false })
+  isAuto?: boolean;
+
+  @Prop({ type: Object, default: null })
+  autoMeta?: {
+    city?: string;
+    currentTarget?: { lat: number; lng: number; type: 'restaurant' | 'customer' } | null;
+    speedKmh?: number;
+  } | null;
+
+  // Minimal wallet for delivery earnings
+  @Prop({ default: 0 })
+  walletBalance: number; // Accumulated delivery fees awaiting payout
+
 }
 
 export const DriverSchema = SchemaFactory.createForClass(Driver);

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import FooterCustomer from "@/components/FooterCustomer";
 
 export default function LandingPage() {
   const actors = [
@@ -44,22 +45,7 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="container mx-auto px-4 py-6">
-          <div className="flex items-center justify-center">
-            <div className="flex items-center space-x-3">
-              <div className="w-12 h-12 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl flex items-center justify-center">
-                <span className="text-white font-bold text-2xl">E</span>
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">EatNow</h1>
-                <p className="text-gray-600">Hệ thống đặt món ăn trực tuyến</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
+      {/* Header removed per request */}
 
       {/* Hero Section */}
       <section className="py-16">
@@ -208,62 +194,7 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-gray-900 text-white py-12">
-        <div className="container mx-auto px-4">
-          <div className="grid md:grid-cols-4 gap-8">
-            <div>
-              <div className="flex items-center space-x-2 mb-4">
-                <div className="w-8 h-8 bg-gradient-to-r from-orange-500 to-red-500 rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">E</span>
-                </div>
-                <span className="text-2xl font-bold">EatNow</span>
-              </div>
-              <p className="text-gray-400">
-                Nền tảng đặt món ăn trực tuyến hàng đầu Việt Nam
-              </p>
-            </div>
-            <div>
-              <h4 className="font-bold mb-4">Về chúng tôi</h4>
-              <ul className="space-y-2 text-gray-400">
-                <li><a href="#" className="hover:text-white">Giới thiệu</a></li>
-                <li><a href="#" className="hover:text-white">Tuyển dụng</a></li>
-                <li><a href="#" className="hover:text-white">Liên hệ</a></li>
-                <li><a href="#" className="hover:text-white">Blog</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-bold mb-4">Hỗ trợ</h4>
-              <ul className="space-y-2 text-gray-400">
-                <li><a href="#" className="hover:text-white">Trung tâm trợ giúp</a></li>
-                <li><a href="#" className="hover:text-white">Điều khoản sử dụng</a></li>
-                <li><a href="#" className="hover:text-white">Chính sách bảo mật</a></li>
-                <li><a href="#" className="hover:text-white">Khiếu nại</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-bold mb-4">Kết nối</h4>
-              <div className="flex space-x-4">
-                <a href="#" className="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center hover:bg-gray-700">
-                  <span className="text-lg">📘</span>
-                </a>
-                <a href="#" className="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center hover:bg-gray-700">
-                  <span className="text-lg">📷</span>
-                </a>
-                <a href="#" className="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center hover:bg-gray-700">
-                  <span className="text-lg">🐦</span>
-                </a>
-                <a href="#" className="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center hover:bg-gray-700">
-                  <span className="text-lg">📱</span>
-                </a>
-              </div>
-            </div>
-          </div>
-          <hr className="border-gray-800 my-8" />
-          <div className="text-center text-gray-400">
-            <p>&copy; 2024 EatNow. Tất cả quyền được bảo lưu.</p>
-          </div>
-        </div>
-      </footer>
+      <FooterCustomer />
     </div>
   );
 }

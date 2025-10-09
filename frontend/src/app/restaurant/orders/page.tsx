@@ -4,6 +4,9 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '../../../components';
 import { useRestaurantNotifications } from '../../../hooks/useSocket';
+import { Tabs, Tab, Card, CardContent, CardHeader, CardActions, List, ListItem, ListItemText, ListItemIcon, Chip, Button, Stack, Typography, Divider, Box } from '@mui/material';
+import OrderStatusChip from '@/components/ui/OrderStatusChip';
+import { BanknotesIcon, CubeIcon, ClockIcon } from '@heroicons/react/24/outline';
 
 interface Order {
   _id: string;
@@ -56,7 +59,7 @@ export default function RestaurantOrdersPage() {
   const token = typeof window !== 'undefined' ? localStorage.getItem('eatnow_token') : null;
   const { socket, connected } = useRestaurantNotifications(restaurantId || '');
 
-  // Get restaurant ID from API
+  // Get restaurant ID from API (cookie-based auth)
   useEffect(() => {
     loadRestaurantId();
   }, []);
@@ -80,9 +83,6 @@ export default function RestaurantOrdersPage() {
   }, [restaurantId]);
 
   const loadRestaurantId = async () => {
-    const token = localStorage.getItem('eatnow_token');
-    if (!token) return;
-
     try {
       const response = await fetch(`${api}/api/v1/restaurants/mine`, {
         credentials: 'include'
@@ -95,6 +95,8 @@ export default function RestaurantOrdersPage() {
         } catch (jsonError) {
           console.error('JSON parsing error in loadRestaurantId:', jsonError);
         }
+      } else if (response.status === 401 || response.status === 403) {
+        router.push('/restaurant/login');
       }
     } catch (error) {
       console.error('Load restaurant ID error:', error);
@@ -104,21 +106,16 @@ export default function RestaurantOrdersPage() {
 
   useEffect(() => {
     if (socket) {
-      const onNew = (data: any) => {
-        showToast(`Có đơn hàng mới! Tổng: ${Number(data.order.total || 0).toLocaleString('vi-VN')}đ`, 'success');
+      const onStatus = (payload: any) => {
+        try {
+          const short = String(payload.orderId || '').slice(-8).toUpperCase();
+          showToast(`Đơn #${short}: ${payload.status}`, 'info');
+        } catch {}
         loadOrders();
       };
-      const onUpd = (data: any) => {
-        const short = String(data.orderId || '').slice(-8).toUpperCase();
-        showToast(`Đơn hàng #${short} đã được cập nhật`, 'info');
-        loadOrders();
-      };
-      socket.on('new_order', onNew);
-      socket.on('order_update', onUpd);
-
+      socket.on('order_status_update:v1', onStatus);
       return () => {
-        socket.off('new_order', onNew);
-        socket.off('order_update', onUpd);
+        socket.off('order_status_update:v1', onStatus);
       };
     }
   }, [socket]);
@@ -128,31 +125,44 @@ export default function RestaurantOrdersPage() {
   }, []);
 
   const loadOrders = async () => {
-    const token = localStorage.getItem('eatnow_token');
-    if (!token) {
-      router.push('/restaurant/login');
-      return;
-    }
-
     try {
-      const response = await fetch(`${api}/api/v1/orders/restaurant`, {
+      const response = await fetch(`${api}/api/v1/restaurants/mine/orders`, {
         credentials: 'include'
       });
 
       if (response.ok) {
         try {
           const ordersData = await response.json();
-          setOrders(Array.isArray(ordersData) ? ordersData : []);
+          const raw = Array.isArray(ordersData) ? ordersData : (ordersData?.data || []);
+          const normalized = Array.isArray(raw) ? raw.map((o: any) => {
+            // Normalize shape to match UI expectations
+            if (!o.customerId && o.customer) {
+              o.customerId = {
+                _id: o.customer?._id || '',
+                name: o.customer?.name || '',
+                phone: o.customer?.phone || '',
+                email: o.customer?.email || ''
+              };
+            }
+            if (!o.finalTotal && typeof o.total === 'number') {
+              o.finalTotal = o.total;
+            }
+            if (!o._id && o.id) {
+              o._id = o.id;
+            }
+            return o;
+          }) : [];
+          setOrders(normalized);
         } catch (jsonError) {
-          console.error('JSON parsing error:', jsonError);
           setOrders([]);
           showToast('Dữ liệu đơn hàng không hợp lệ', 'error');
         }
+      } else if (response.status === 401 || response.status === 403) {
+        router.push('/restaurant/login');
       } else {
         showToast('Không thể tải danh sách đơn hàng', 'error');
       }
     } catch (error) {
-      console.error('Load orders error:', error);
       showToast('Có lỗi xảy ra khi tải danh sách đơn hàng', 'error');
     } finally {
       setLoading(false);
@@ -188,7 +198,6 @@ export default function RestaurantOrdersPage() {
         showToast('Không thể cập nhật trạng thái đơn hàng', 'error');
       }
     } catch (error) {
-      console.error('Update order status error:', error);
       showToast('Có lỗi xảy ra khi cập nhật trạng thái đơn hàng', 'error');
     } finally {
       setUpdating(null);
@@ -253,157 +262,113 @@ export default function RestaurantOrdersPage() {
 
   if (loading) {
     return (
-      <div className="text-center py-10">
+      <Stack alignItems="center" justifyContent="center" sx={{ py: 6 }}>
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto"></div>
-        <p className="mt-4 text-gray-600">Đang tải danh sách đơn hàng...</p>
-      </div>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>Đang tải danh sách đơn hàng...</Typography>
+      </Stack>
     );
   }
 
   return (
     <div>
-      <h1 className="text-3xl font-bold text-gray-900 mb-8">Quản lý đơn hàng</h1>
+      <Typography variant="h4" component="h1" sx={{ mb: 3 }}>Quản lý đơn hàng</Typography>
 
-          {/* Tabs */}
-          <div className="mb-8">
-            <div className="border-b border-gray-200">
-              <nav className="-mb-px flex space-x-8">
-                <button
-                  onClick={() => setActiveTab('in-progress')}
-                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                    activeTab === 'in-progress'
-                      ? 'border-orange-500 text-orange-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  Đơn đang thực hiện ({orders.filter(o => ['pending', 'confirmed', 'preparing', 'ready'].includes(o.status)).length})
-                </button>
-                <button
-                  onClick={() => setActiveTab('completed')}
-                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                    activeTab === 'completed'
-                      ? 'border-orange-500 text-orange-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  Đơn đã hoàn thành ({orders.filter(o => ['delivered', 'cancelled'].includes(o.status)).length})
-                </button>
-              </nav>
-            </div>
-          </div>
+      <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 3 }}>
+        <Tab value="in-progress" label={`Đơn đang thực hiện (${orders.filter(o => ['pending', 'confirmed', 'preparing', 'ready'].includes(o.status)).length})`} />
+        <Tab value="completed" label={`Đơn đã hoàn thành (${orders.filter(o => ['delivered', 'cancelled'].includes(o.status)).length})`} />
+      </Tabs>
 
           {filteredOrders.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="text-6xl mb-4">📦</div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Chưa có đơn hàng nào</h2>
-              <p className="text-gray-600">Các đơn hàng mới sẽ xuất hiện ở đây</p>
-            </div>
+            <Stack alignItems="center" justifyContent="center" sx={{ py: 8 }}>
+              <Typography variant="h1" sx={{ fontSize: 56 }}>📦</Typography>
+              <Typography variant="h6" sx={{ mt: 1 }}>Chưa có đơn hàng nào</Typography>
+              <Typography variant="body2" color="text.secondary">Các đơn hàng mới sẽ xuất hiện ở đây</Typography>
+            </Stack>
           ) : (
-            <div className="space-y-6">
+            <Stack spacing={2}>
               {filteredOrders.map((order) => (
-                <div key={order._id} className="bg-white rounded-xl border p-6 shadow-sm">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        Đơn hàng #{order._id.slice(-8).toUpperCase()}
-                      </h3>
-                      <p className="text-sm text-gray-600">
-                        {new Date(order.createdAt).toLocaleString('vi-VN')}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">{getStatusIcon(order.status)}</span>
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(order.status)}`}>
-                        {getStatusText(order.status)}
-                      </span>
-                    </div>
-                  </div>
+                <Card key={order._id} elevation={0} sx={{ border: theme => `1px solid ${theme.palette.divider}` }}>
+                  <CardHeader
+                    title={
+                      <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+                        <Box>
+                          <Typography variant="subtitle1" fontWeight={600}>Đơn hàng #{order._id.slice(-8).toUpperCase()}</Typography>
+                          <Typography variant="caption" color="text.secondary">{new Date(order.createdAt).toLocaleString('vi-VN')}</Typography>
+                        </Box>
+                        <OrderStatusChip status={order.status as any} />
+                      </Stack>
+                    }
+                  />
+                  <CardContent>
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} divider={<Divider orientation="vertical" flexItem sx={{ display: { xs: 'none', md: 'block' } }} /> }>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography variant="subtitle2" sx={{ mb: 1 }}>Thông tin khách hàng</Typography>
+                        <Typography>{order.customerId.name}</Typography>
+                        <Typography variant="body2" color="text.secondary">📞 {order.customerId.phone}</Typography>
+                        <Typography variant="body2" color="text.secondary">📧 {order.customerId.email}</Typography>
+                      </Box>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography variant="subtitle2" sx={{ mb: 1 }}>Giao đến</Typography>
+                        <Typography>
+                          {typeof order.deliveryAddress === 'string' ? order.deliveryAddress : (order.deliveryAddress?.addressLine || 'Địa chỉ không xác định')}
+                        </Typography>
+                        {order.specialInstructions && (
+                          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Ghi chú: {order.specialInstructions}</Typography>
+                        )}
+                      </Box>
+                    </Stack>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
-                    {/* Customer Info */}
-                    <div>
-                      <h4 className="font-medium text-gray-900 mb-2">Thông tin khách hàng</h4>
-                      <p className="text-gray-600">{order.customerId.name}</p>
-                      <p className="text-sm text-gray-500">📞 {order.customerId.phone}</p>
-                      <p className="text-sm text-gray-500">📧 {order.customerId.email}</p>
-                    </div>
-                    
-                    {/* Delivery Info */}
-                    <div>
-                      <h4 className="font-medium text-gray-900 mb-2">Giao đến</h4>
-                      <p className="text-gray-600">
-                        {typeof order.deliveryAddress === 'string' 
-                          ? order.deliveryAddress 
-                          : order.deliveryAddress?.addressLine || 'Địa chỉ không xác định'
-                        }
-                      </p>
-                      {order.specialInstructions && (
-                        <p className="text-sm text-gray-500 mt-1">
-                          Ghi chú: {order.specialInstructions}
-                        </p>
-                      )}
-                    </div>
-                  </div>
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="subtitle2" sx={{ mb: 1 }}>Món đã đặt</Typography>
+                      <List dense>
+                        {order.items.map((item, index) => (
+                          <ListItem key={index} secondaryAction={
+                            <Typography fontWeight={600}>{item.subtotal.toLocaleString('vi-VN')}đ</Typography>
+                          }>
+                            <ListItemIcon><CubeIcon width={18} /></ListItemIcon>
+                            <ListItemText primary={item.name} secondary={`×${item.quantity}`} />
+                          </ListItem>
+                        ))}
+                      </List>
+                    </Box>
 
-                  {/* Items */}
-                  <div className="mb-4">
-                    <h4 className="font-medium text-gray-900 mb-2">Món đã đặt</h4>
-                    <div className="space-y-2">
-                      {order.items.map((item, index) => (
-                        <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                          <div className="flex items-center gap-3">
-                            <span className="text-gray-500">×{item.quantity}</span>
-                            <span className="text-gray-900">{item.name}</span>
-                          </div>
-                          <span className="text-gray-900 font-medium">
-                            {item.subtotal.toLocaleString('vi-VN')}đ
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Order Summary */}
-                  <div className="border-t pt-4 mb-4">
-                    <div className="flex justify-between text-lg font-semibold text-gray-900">
-                      <span>Tổng cộng:</span>
-                      <span>{order.finalTotal.toLocaleString('vi-VN')}đ</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-gray-600 mt-2">
-                      <span>💳</span>
-                      <span>
-                        {order.paymentMethod === 'cash' ? 'Tiền mặt' : 'Chuyển khoản'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <span>🕒</span>
-                      <span>
+                    <Divider sx={{ my: 2 }} />
+                    <Stack direction="row" alignItems="center" justifyContent="space-between">
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <BanknotesIcon width={18} />
+                        <Typography variant="body2" color="text.secondary">{order.paymentMethod === 'cash' ? 'Tiền mặt' : 'Chuyển khoản'}</Typography>
+                      </Stack>
+                      <Typography variant="h6">{order.finalTotal.toLocaleString('vi-VN')}đ</Typography>
+                    </Stack>
+                  </CardContent>
+                  <CardActions sx={{ px: 2, pb: 2, pt: 0, display: 'flex', justifyContent: 'space-between' }}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <ClockIcon width={16} />
+                      <Typography variant="body2" color="text.secondary">
                         {order.status === 'pending' && 'Chờ xác nhận từ nhà hàng'}
                         {order.status === 'confirmed' && 'Đã xác nhận, chờ chuẩn bị'}
                         {order.status === 'preparing' && 'Đang chuẩn bị món ăn'}
                         {order.status === 'ready' && 'Món ăn đã sẵn sàng'}
                         {order.status === 'delivered' && 'Đã giao hàng thành công'}
                         {order.status === 'cancelled' && 'Đơn hàng đã bị hủy'}
-                      </span>
-                    </div>
-                    
+                      </Typography>
+                    </Stack>
                     {getNextStatus(order.status) && (
-                      <button
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        disableElevation
                         onClick={() => updateOrderStatus(order._id, getNextStatus(order.status)!)}
                         disabled={updating === order._id}
-                        className="bg-orange-500 hover:bg-orange-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                        sx={{ textTransform: 'none' }}
                       >
                         {updating === order._id ? 'Đang xử lý...' : getNextStatusText(order.status)}
-                      </button>
+                      </Button>
                     )}
-                  </div>
-                </div>
+                  </CardActions>
+                </Card>
               ))}
-            </div>
+            </Stack>
           )}
       <ToastContainer />
     </div>

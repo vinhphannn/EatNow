@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Param, Body, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Put, Param, Body, UseGuards, Request, Patch } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { OrderService } from './order.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -31,6 +31,47 @@ export class OrderController {
   async createOrder(@Request() req, @Body() orderData: any) {
     const customerId = req.user.id;
     return this.orderService.createOrder(customerId, orderData);
+  }
+
+  @Get('available')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List available orders for drivers (ready, no driver)' })
+  async getAvailable() {
+    return this.orderService.findAvailableOrders();
+  }
+
+  // Driver: list in-progress orders
+  @Get('mine/active')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('driver')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List driver\'s active orders (picking states)' })
+  async getMyActive(@Request() req: any) {
+    const driverUserId = req.user?.id;
+    return (this.orderService as any).findDriverActiveOrders(driverUserId);
+  }
+
+  // Driver accepts an order (assign driverId if order is ready and unassigned)
+  @Patch(':id/accept')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('driver')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Driver accepts order (assigns driver to ready order)' })
+  async acceptByDriver(@Request() req: any, @Param('id') orderId: string) {
+    const driverUserId = req.user?.id;
+    return this.orderService.acceptOrderByDriver(orderId, driverUserId);
+  }
+
+  // Driver completes an order -> delivered (triggers settlement in service)
+  @Patch(':id/complete')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('driver')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Driver completes order (mark delivered and settle)' })
+  async completeByDriver(@Request() req: any, @Param('id') orderId: string) {
+    const driverUserId = req.user?.id;
+    return this.orderService.completeOrderByDriver(orderId, driverUserId);
   }
 
   @Get('customer')

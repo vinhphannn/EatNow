@@ -125,25 +125,17 @@ export class CartService {
   }
 
   async removeFromCart(cartItemId: string) {
-    const result = await this.cartModel.findByIdAndUpdate(
-      cartItemId,
-      { isActive: false },
-      { new: true }
-    );
-
+    // Use hard delete to avoid unique index collisions on (userId, itemId, isActive)
+    const result = await this.cartModel.findByIdAndDelete(cartItemId);
     if (!result) {
       throw new NotFoundException('Cart item not found');
     }
-
     return { success: true };
   }
 
   async clearCart(userId: string) {
-    await this.cartModel.updateMany(
-      { userId, isActive: true },
-      { isActive: false }
-    );
-
+    // Use hard delete to avoid unique index collisions on (userId, itemId, isActive)
+    await this.cartModel.deleteMany({ userId });
     return { success: true };
   }
 

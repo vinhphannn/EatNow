@@ -1,5 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsString } from 'class-validator';
+import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import { UserDto } from '../../user/dto/user.dto';
+import { UserRole } from '../../user/schemas/user.schema';
 
 export class LoginRequestDto {
   @ApiProperty({ example: 'user@example.com' })
@@ -13,21 +15,30 @@ export class LoginRequestDto {
   password: string;
 }
 
-export class UserDto {
-  @ApiProperty({ example: '65f2b6c8e1a2b3c4d5e6f7a8' })
-  id: string;
-
+export class RegisterDto {
   @ApiProperty({ example: 'user@example.com' })
+  @IsEmail()
+  @IsNotEmpty()
   email: string;
 
-  @ApiProperty({ example: 'customer', enum: ['admin', 'customer', 'restaurant', 'driver'] })
-  role: string;
+  @ApiProperty({ example: 'password123', minLength: 6 })
+  @IsString()
+  @MinLength(6)
+  password: string;
 
   @ApiProperty({ example: 'Nguyen Van A' })
-  name?: string;
+  @IsString()
+  @IsNotEmpty()
+  name: string;
 
-  @ApiProperty({ required: false, example: 'https://...' })
-  avatar?: string;
+  @ApiProperty({ example: '0123456789', required: false })
+  @IsString()
+  @IsOptional()
+  phone?: string;
+
+  @ApiProperty({ enum: Object.values(UserRole) })
+  @IsEnum(UserRole)
+  role: UserRole;
 }
 
 export class LoginResponseDto {

@@ -18,7 +18,7 @@ export default function AdminLoginPage() {
     if (isAuthenticated && user?.role === UserRole.ADMIN && !hasRedirected) {
       console.log("🔍 Redirecting to /admin/dashboard");
       setHasRedirected(true);
-      router.push('/admin/dashboard');
+      router.replace('/admin/dashboard');
     }
   }, [isAuthenticated, user, router, hasRedirected]);
 

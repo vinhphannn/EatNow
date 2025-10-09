@@ -55,18 +55,12 @@ class ApiClient {
       : endpoint;
     const url = `${this.baseURL}${normalized}`;
     
-    // Get token from localStorage
-    const token = typeof window !== 'undefined' ? localStorage.getItem('eatnow_token') : null;
-    
     const headers = {
       ...this.defaultHeaders,
       ...options.headers,
     };
 
-    // Add Authorization header if token exists
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
+    // Cookie-based auth only; do not send Authorization from localStorage
 
     const config: RequestInit = {
       ...options,

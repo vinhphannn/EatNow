@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Param, Body, Query, Patch, Delete, UseGuards, Req } from '@nestjs/common';
 import { ApiQuery, ApiTags } from '@nestjs/swagger';
 import { RestaurantService } from './restaurant.service';
+import { OrderService } from '../order/order.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
@@ -10,7 +11,7 @@ import { UserService } from '../user/user.service';
 @ApiTags('restaurants')
 @Controller('restaurants')
 export class RestaurantController {
-  constructor(private readonly restaurantService: RestaurantService, private readonly userService: UserService) {}
+  constructor(private readonly restaurantService: RestaurantService, private readonly userService: UserService, private readonly orderService: OrderService) {}
 
   // Restaurants
   // Bảo vệ endpoint đăng ký: chỉ admin được quyền tạo trực tiếp bản ghi restaurants
@@ -101,15 +102,47 @@ export class RestaurantController {
     return this.restaurantService.getDashboardStats(userId);
   }
 
-  // Recent orders
+  // Wallet summary for current restaurant owner
+  @UseGuards(JwtAuthGuard)
+  @Get('mine/wallet')
+  async getMyWallet(@Req() req: any) {
+    const userId = req.user.id;
+    return this.restaurantService.getWalletForOwner(userId);
+  }
+
+  // Recent orders (real data)
   @UseGuards(JwtAuthGuard)
   @Get('mine/orders/recent')
   async getRecentOrders(
     @Req() req: any,
     @Query('limit') limit: number = 5
   ) {
-    const userId = req.user.id;
-    return this.restaurantService.getRecentOrders(userId, limit);
+    try {
+      const userId = req.user.id;
+      const res = await this.orderService.getOrdersByRestaurantOwner(userId, { page: 1, limit });
+      return Array.isArray((res as any).data) ? (res as any).data : [];
+    } catch (e) {
+      console.error('getRecentOrders error', e);
+      return [];
+    }
+  }
+
+  // Full orders list for restaurant
+  @UseGuards(JwtAuthGuard)
+  @Get('mine/orders')
+  async listOrders(
+    @Req() req: any,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 20,
+    @Query('status') status?: string,
+  ) {
+    try {
+      const userId = req.user.id;
+      return this.restaurantService.listOrdersByOwner(userId, { page, limit, status });
+    } catch (e) {
+      console.error('listOrders error', e);
+      return { data: [], pagination: { page, limit, total: 0, totalPages: 1 } };
+    }
   }
 
   // Customers
@@ -134,7 +167,7 @@ export class RestaurantController {
   @UseGuards(JwtAuthGuard, RolesGuard, OwnershipGuard)
   @Roles('admin','restaurant')
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() body: { name?: string; status?: string }) {
+  async update(@Param('id') id: string, @Body() body: { name?: string; status?: string; banReason?: string }) {
     return this.restaurantService.updateRestaurant(id, body);
   }
 
@@ -186,6 +219,7 @@ export class RestaurantController {
   @ApiQuery({ name: 'isActive', required: false })
   @ApiQuery({ name: 'sortBy', required: false, enum: ['position','createdAt','price'] as any })
   @ApiQuery({ name: 'order', required: false, enum: ['asc','desc'] as any })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   async listItems(
     @Param('restaurantId') restaurantId: string,
     @Query('type') type?: 'food'|'drink',
@@ -193,8 +227,9 @@ export class RestaurantController {
     @Query('isActive') isActive?: string,
     @Query('sortBy') sortBy?: 'position'|'createdAt'|'price',
     @Query('order') order?: 'asc'|'desc',
+    @Query('limit') limit?: string,
   ) {
-    return this.restaurantService.listItems(restaurantId, { type, categoryId, isActive, sortBy, order });
+    return this.restaurantService.listItems(restaurantId, { type, categoryId, isActive, sortBy, order, limit });
   }
 
   @Get('/items/:id')
@@ -202,10 +237,10 @@ export class RestaurantController {
     return this.restaurantService.getItem(id);
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard, OwnershipGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin','restaurant')
   @Patch('/items/:id')
-  async updateItem(@Param('id') id: string, @Body() body: any) {
+  async updateItem(@Param('id') id: string, @Body() body: { isActive?: boolean }) {
     return this.restaurantService.updateItem(id, body);
   }
 

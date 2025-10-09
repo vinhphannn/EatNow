@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { Model as MModel } from 'mongoose';
+import { Order, OrderDocument } from '../order/schemas/order.schema';
 import { FilterQuery, Model, Types } from 'mongoose';
 import { Restaurant, RestaurantDocument } from './schemas/restaurant.schema';
 import { Category, CategoryDocument } from './schemas/category.schema';
@@ -11,6 +13,7 @@ export class RestaurantService {
     @InjectModel(Restaurant.name) private readonly restaurantModel: Model<RestaurantDocument>,
     @InjectModel(Category.name) private readonly categoryModel: Model<CategoryDocument>,
     @InjectModel(Item.name) private readonly itemModel: Model<ItemDocument>,
+    @InjectModel(Order.name) private readonly orderModel: Model<OrderDocument>,
   ) {}
 
   // Restaurants
@@ -48,9 +51,9 @@ export class RestaurantService {
     return docs.map((d: any) => ({ id: String(d._id), name: d.name, status: d.status, ownerUserId: d.ownerUserId, createdAt: d.createdAt }));
   }
 
-  async findAllPublicRestaurants(options?: { limit?: number; skip?: number; category?: string }) {
-    const limit = options?.limit || 20;
-    const skip = options?.skip || 0;
+  async findAllPublicRestaurants(options?: { limit?: number | string; skip?: number | string; category?: string }) {
+    const limit = Math.max(0, Number(options?.limit ?? 20));
+    const skip = Math.max(0, Number(options?.skip ?? 0));
     
     const filter: any = { status: 'active' };
     if (options?.category) {
@@ -73,61 +76,7 @@ export class RestaurantService {
       .limit(limit)
       .skip(skip)
       .lean();
-    
-    // Nếu không có dữ liệu, trả về dữ liệu mẫu
-    if (docs.length === 0) {
-      return [
-        {
-          id: "demo-1",
-          name: "Pizza Hut",
-          description: "Nhà hàng pizza nổi tiếng thế giới với hương vị đặc trưng",
-          address: "123 Đường Lê Lợi, Quận 1, TP.HCM",
-          imageUrl: "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400",
-          rating: 4.5,
-          deliveryTime: "25-35 phút",
-          category: "Pizza",
-          isOpen: true,
-          createdAt: new Date().toISOString()
-        },
-        {
-          id: "demo-2",
-          name: "KFC",
-          description: "Gà rán KFC với công thức độc quyền, giòn tan bên ngoài",
-          address: "456 Đường Nguyễn Huệ, Quận 1, TP.HCM",
-          imageUrl: "https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=400",
-          rating: 4.3,
-          deliveryTime: "20-30 phút",
-          category: "Đồ ăn nhanh",
-          isOpen: true,
-          createdAt: new Date().toISOString()
-        },
-        {
-          id: "demo-3",
-          name: "McDonald's",
-          description: "Burger và đồ ăn nhanh với chất lượng quốc tế",
-          address: "789 Đường Đồng Khởi, Quận 1, TP.HCM",
-          imageUrl: "https://images.unsplash.com/photo-1626205074719-f067063d5541?w=400",
-          rating: 4.1,
-          deliveryTime: "18-28 phút",
-          category: "Đồ ăn nhanh",
-          isOpen: true,
-          createdAt: new Date().toISOString()
-        },
-        {
-          id: "demo-4",
-          name: "Phở 24",
-          description: "Phở bò truyền thống với nước dùng đậm đà",
-          address: "321 Đường Pasteur, Quận 3, TP.HCM",
-          imageUrl: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=400",
-          rating: 4.7,
-          deliveryTime: "15-25 phút",
-          category: "Món Việt",
-          isOpen: true,
-          createdAt: new Date().toISOString()
-        }
-      ];
-    }
-    
+    // Không trả demo khi rỗng; để FE xử lý empty state
     return docs.map((d: any) => ({
       id: String(d._id),
       name: d.name || 'Chưa thiết lập tên',
@@ -198,10 +147,34 @@ export class RestaurantService {
     };
   }
 
-  async updateRestaurant(id: string, payload: { name?: string; status?: string; description?: string; address?: string; openingHours?: string; openTime?: string; closeTime?: string; openDays?: number[]; latitude?: number; longitude?: number }) {
+  async getWalletForOwner(ownerUserId: string) {
+    const r = await this.restaurantModel.findOne({ ownerUserId: new Types.ObjectId(ownerUserId) }).lean();
+    if (!r) return { walletBalance: 0, totalRevenue: 0, commissionRate: 0.15, recentOrders: [] };
+    const recentOrders = await this.orderModel
+      .find({ restaurantId: (r as any)._id })
+      .sort({ createdAt: -1 })
+      .limit(3)
+      .lean();
+    const mapped = recentOrders.map((o: any) => ({
+      id: String(o._id),
+      status: o.status,
+      total: o.total,
+      deliveryFee: o.deliveryFee,
+      netToRestaurant: Math.max(0, Math.round(Number(o.total || 0) - Number(o.total || 0) * Number((r as any).commissionRate ?? 0.15))),
+      createdAt: o.createdAt,
+    }));
+    return {
+      walletBalance: (r as any).walletBalance || 0,
+      totalRevenue: (r as any).totalRevenue || 0,
+      commissionRate: (r as any).commissionRate ?? 0.15,
+      recentOrders: mapped,
+    };
+  }
+
+  async updateRestaurant(id: string, payload: { name?: string; status?: string; banReason?: string; description?: string; address?: string; openingHours?: string; openTime?: string; closeTime?: string; openDays?: number[]; latitude?: number; longitude?: number }) {
     const d = await this.restaurantModel.findByIdAndUpdate(id, { $set: payload }, { new: true }).lean();
     if (!d) throw new NotFoundException('Restaurant not found');
-    return { id: String(d._id), name: d.name, status: d.status, ownerUserId: (d as any).ownerUserId, description: (d as any).description, address: (d as any).address, openingHours: (d as any).openingHours, openTime: (d as any).openTime, closeTime: (d as any).closeTime, openDays: (d as any).openDays, latitude: (d as any).latitude, longitude: (d as any).longitude };
+    return { id: String(d._id), name: d.name, status: d.status, banReason: (d as any).banReason, ownerUserId: (d as any).ownerUserId, description: (d as any).description, address: (d as any).address, openingHours: (d as any).openingHours, openTime: (d as any).openTime, closeTime: (d as any).closeTime, openDays: (d as any).openDays, latitude: (d as any).latitude, longitude: (d as any).longitude };
   }
 
   async deleteRestaurant(id: string) {
@@ -244,7 +217,7 @@ export class RestaurantService {
     return { id: doc._id };
   }
 
-  async listItems(restaurantId: string, filter?: { type?: 'food'|'drink'; categoryId?: string; isActive?: string; sortBy?: 'position'|'createdAt'|'price'; order?: 'asc'|'desc' }) {
+  async listItems(restaurantId: string, filter?: { type?: 'food'|'drink'; categoryId?: string; isActive?: string; sortBy?: 'position'|'createdAt'|'price'; order?: 'asc'|'desc'; limit?: string }) {
     const q: any = { restaurantId };
     if (filter?.type) q.type = filter.type;
     if (filter?.categoryId) q.categoryId = filter.categoryId;
@@ -257,10 +230,17 @@ export class RestaurantService {
     const sortOrder = (filter?.order || 'asc') === 'asc' ? 1 : -1;
     sort[sortField] = sortOrder;
     if (sortField !== 'createdAt') sort['createdAt'] = 1;
-    const docs = await this.itemModel
+    let qy = this.itemModel
       .find(q, { name: 1, price: 1, type: 1, isActive: 1, categoryId: 1, position: 1, createdAt: 1, quantityRemaining: 1, imageUrl: 1, imageId: 1, description: 1, rating: 1, reviewCount: 1, popularityScore: 1 })
-      .sort(sort)
-      .lean();
+      .sort(sort);
+    // Apply limit only when provided and valid (>0). Do not force default 1.
+    const parsedLimit = Number(filter?.limit);
+    const hasValidLimit = Number.isFinite(parsedLimit) && parsedLimit > 0;
+    if (hasValidLimit) {
+      const n = Math.min(100, Math.floor(parsedLimit));
+      qy = qy.limit(n);
+    }
+    const docs = await qy.lean();
     return docs.map((d: any) => ({ 
       id: d._id, 
       name: d.name, 
@@ -289,7 +269,7 @@ export class RestaurantService {
   async updateItem(id: string, payload: Partial<{ name: string; price: number; type: 'food'|'drink'; categoryId: string; description: string; imageUrl: string; isActive: boolean; position: number; quantityRemaining: number }>) {
     const d = await this.itemModel.findByIdAndUpdate(id, { $set: payload }, { new: true }).lean();
     if (!d) throw new NotFoundException('Item not found');
-    return { id: d._id };
+    return { id: String(d._id), isActive: d.isActive } as any;
   }
 
   async deleteItem(id: string) {
@@ -297,96 +277,111 @@ export class RestaurantService {
     return { ok: true };
   }
 
-  // Dashboard stats
+  // Dashboard stats (real data)
   async getDashboardStats(userId: string) {
     const restaurant = await this.findRestaurantByOwnerId(userId);
-    console.log('🔍 Dashboard stats for user:', userId, 'restaurant found:', !!restaurant);
-    
-    // If no restaurant found, still return mock data for testing
     if (!restaurant) {
-      console.log('⚠️ No restaurant found, returning mock data');
+      return {
+        todayOrders: 0,
+        todayRevenue: 0,
+        todayGrowth: 0,
+        averageRating: 0,
+        totalReviews: 0,
+        totalMenuItems: await this.itemModel.countDocuments({}),
+        activeMenuItems: await this.itemModel.countDocuments({ isActive: true }),
+        newItemsThisMonth: await this.itemModel.countDocuments({ createdAt: { $gte: new Date(Date.now() - 30*24*3600*1000) } }),
+        completionRate: 0,
+        avgPreparationTime: 0,
+        onTimeDeliveryRate: 0,
+        pendingOrders: 0,
+        monthlyOrders: 0,
+        monthlyRevenue: 0,
+        avgOrderValue: 0,
+        newCustomers: 0,
+        returningCustomers: 0,
+        customerRetentionRate: 0,
+        topSellingItems: [],
+      } as any;
     }
 
-    // Mock data for now - in real implementation, calculate from orders
+    const startOfDay = new Date(); startOfDay.setHours(0,0,0,0);
+    const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0,0,0,0);
+
+    const [todayOrdersDocs, monthOrdersDocs, menuCounts] = await Promise.all([
+      this.orderModel.find({ restaurantId: (restaurant as any)._id, createdAt: { $gte: startOfDay } }).lean(),
+      this.orderModel.find({ restaurantId: (restaurant as any)._id, createdAt: { $gte: startOfMonth } }).lean(),
+      Promise.all([
+        this.itemModel.countDocuments({ restaurantId: (restaurant as any)._id }),
+        this.itemModel.countDocuments({ restaurantId: (restaurant as any)._id, isActive: true }),
+        this.itemModel.countDocuments({ restaurantId: (restaurant as any)._id, createdAt: { $gte: new Date(Date.now() - 30*24*3600*1000) } }),
+      ]),
+    ]);
+
+    const todayOrders = todayOrdersDocs.length;
+    const todayRevenue = todayOrdersDocs.reduce((sum: number, o: any) => sum + (o.finalTotal || o.total || 0), 0);
+    const monthlyOrders = monthOrdersDocs.length;
+    const monthlyRevenue = monthOrdersDocs.reduce((sum: number, o: any) => sum + (o.finalTotal || o.total || 0), 0);
+    const avgOrderValue = monthlyOrders ? Math.round(monthlyRevenue / monthlyOrders) : 0;
+
     return {
-      todayOrders: 15,
-      todayRevenue: 2500000,
-      todayGrowth: 12.5,
-      averageRating: 4.3,
-      totalReviews: 128,
-      totalMenuItems: 25,
-      activeMenuItems: 22,
-      newItemsThisMonth: 3,
-      completionRate: 96.8,
-      avgPreparationTime: 18,
-      onTimeDeliveryRate: 94.2,
-      pendingOrders: 3,
-      monthlyOrders: 450,
-      monthlyRevenue: 75000000,
-      avgOrderValue: 166667,
-      newCustomers: 23,
-      returningCustomers: 127,
-      customerRetentionRate: 84.7,
-      topSellingItems: [
-        { itemId: '1', name: 'Phở Bò', orders: 45, revenue: 2700000 },
-        { itemId: '2', name: 'Bún Chả', orders: 38, revenue: 2280000 },
-        { itemId: '3', name: 'Bánh Mì', orders: 32, revenue: 1280000 },
-        { itemId: '4', name: 'Cơm Tấm', orders: 28, revenue: 1960000 },
-        { itemId: '5', name: 'Chả Cá', orders: 25, revenue: 2000000 }
-      ]
+      todayOrders,
+      todayRevenue,
+      todayGrowth: 0,
+      averageRating: restaurant.rating || 0,
+      totalReviews: restaurant.reviewCount || 0,
+      totalMenuItems: menuCounts[0],
+      activeMenuItems: menuCounts[1],
+      newItemsThisMonth: menuCounts[2],
+      completionRate: 0,
+      avgPreparationTime: 0,
+      onTimeDeliveryRate: 0,
+      pendingOrders: await this.orderModel.countDocuments({ restaurantId: (restaurant as any)._id, status: 'pending' }),
+      monthlyOrders,
+      monthlyRevenue,
+      avgOrderValue,
+      newCustomers: 0,
+      returningCustomers: 0,
+      customerRetentionRate: 0,
+      topSellingItems: [],
     };
   }
 
-  // Get recent orders for restaurant
-  async getRecentOrders(userId: string, limit: number = 5) {
+  // Get recent orders for restaurant (now via OrderService in controller)
+  async listOrdersByOwner(userId: string, opts: { page?: number; limit?: number; status?: string } = {}) {
     const restaurant = await this.findRestaurantByOwnerId(userId);
-    console.log('🔍 Get recent orders for user:', userId, 'restaurant found:', !!restaurant);
-    
-    // If no restaurant found, still return mock data for testing
     if (!restaurant) {
-      console.log('⚠️ No restaurant found, returning mock recent orders data');
+      return { data: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 1 } } as any;
     }
+    const page = opts.page || 1;
+    const limit = opts.limit || 20;
+    const query: any = { restaurantId: (restaurant as any)._id };
+    if (opts.status) query.status = opts.status;
 
-    // Mock data for now - in real implementation, get from orders collection
-    const mockOrders = [
-      {
-        _id: '1',
-        code: 'ORD001',
-        customer: { name: 'Nguyễn Văn A', phone: '0123456789' },
-        items: [
-          { name: 'Phở Bò', quantity: 1, price: 50000 },
-          { name: 'Nước Cam', quantity: 1, price: 15000 }
-        ],
-        status: 'pending',
-        finalTotal: 65000,
-        createdAt: new Date(Date.now() - 1000 * 60 * 30) // 30 minutes ago
-      },
-      {
-        _id: '2',
-        code: 'ORD002',
-        customer: { name: 'Trần Thị B', phone: '0987654321' },
-        items: [
-          { name: 'Bún Chả', quantity: 2, price: 45000 },
-          { name: 'Coca Cola', quantity: 2, price: 20000 }
-        ],
-        status: 'preparing',
-        finalTotal: 130000,
-        createdAt: new Date(Date.now() - 1000 * 60 * 60) // 1 hour ago
-      },
-      {
-        _id: '3',
-        code: 'ORD003',
-        customer: { name: 'Lê Văn C', phone: '0369258147' },
-        items: [
-          { name: 'Cơm Tấm', quantity: 1, price: 35000 }
-        ],
-        status: 'ready',
-        finalTotal: 35000,
-        createdAt: new Date(Date.now() - 1000 * 60 * 90) // 1.5 hours ago
-      }
-    ];
+    const [items, total] = await Promise.all([
+      this.orderModel
+        .find(query)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .populate('customerId', 'name email phone')
+        .populate('driverId', 'name phone')
+        .lean(),
+      this.orderModel.countDocuments(query),
+    ]);
 
-    return mockOrders.slice(0, limit);
+    return {
+      data: items.map((o: any) => ({
+        _id: o._id,
+        orderCode: o.code || String(o._id),
+        customer: { name: (o.customerId as any)?.name, email: (o.customerId as any)?.email, phone: (o.customerId as any)?.phone },
+        items: o.items,
+        status: o.status,
+        finalTotal: o.finalTotal || o.total || 0,
+        createdAt: o.createdAt,
+        driverId: o.driverId ? { _id: (o.driverId as any)._id, name: (o.driverId as any).name, phone: (o.driverId as any).phone } : undefined,
+      })),
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) || 1 },
+    };
   }
 
   // Get customers for restaurant
