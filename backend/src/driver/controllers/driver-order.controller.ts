@@ -3,6 +3,9 @@ import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { OrderAssignmentService } from '../../order/services/order-assignment.service';
 import { DriverOrderService } from '../services/driver-order.service';
 import { OrderStatus } from '../../order/schemas/order.schema';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { Driver } from '../schemas/driver.schema';
 
 @Controller('driver/orders')
 @UseGuards(JwtAuthGuard)
@@ -12,6 +15,7 @@ export class DriverOrderController {
   constructor(
     private readonly orderAssignmentService: OrderAssignmentService,
     private readonly driverOrderService: DriverOrderService,
+    @InjectModel(Driver.name) private driverModel: Model<Driver>,
   ) {}
 
   @Get()
@@ -22,8 +26,15 @@ export class DriverOrderController {
     @Query('limit') limit: string = '20',
   ) {
     try {
-      const driverId = req.user.id;
-      return this.driverOrderService.listOrdersByDriver(driverId, {
+      const userId = req.user.id;
+      
+      // Find driver document by userId
+      const driver = await this.driverModel.findOne({ userId }).lean();
+      if (!driver) {
+        return { orders: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 0 } };
+      }
+      
+      return this.driverOrderService.listOrdersByDriver(String(driver._id), {
         status,
         page: parseInt(page as any, 10) || 1,
         limit: Math.min(parseInt(limit as any, 10) || 20, 100)
@@ -40,9 +51,21 @@ export class DriverOrderController {
     @Param('orderId') orderId: string
   ) {
     try {
-      const driverId = req.user.id;
+      const userId = req.user.id;
+      
+      // Find driver document by userId
+      const driver = await this.driverModel.findOne({ userId }).lean();
+      if (!driver) {
+        return { success: false, message: 'Driver not found' };
+      }
+      
       const order = await this.driverOrderService.getOrderById(orderId);
-      if (!order || order.driverId?.toString() !== driverId) {
+      console.log('Order found:', !!order);
+      console.log('Order driverId:', order?.driverId);
+      console.log('Driver _id:', driver._id);
+      console.log('Driver comparison:', order?.driverId?.toString(), '===', String(driver._id));
+      
+      if (!order || order.driverId?.toString() !== String(driver._id)) {
         return { success: false, message: 'Order not found or not assigned to you' };
       }
       return order;
@@ -200,14 +223,14 @@ export class DriverOrderController {
         };
       }
 
-      // Update order status
-      await this.driverOrderService.updateOrderStatus(orderId, OrderStatus.DELIVERED, driverId);
+      // Update to READY->DELIVERED should happen via delivered endpoint; here we can leave as no-op or validate arrival
+      // For clearer flow, do not mark DELIVERED here. Keep finalization in /delivered endpoint.
 
       this.logger.log(`Driver ${driverId} arrived at customer for order ${orderId}`);
 
       return {
         success: true,
-        message: 'Status updated: Arrived at customer location'
+        message: 'Arrived at customer location'
       };
     } catch (error) {
       this.logger.error('Failed to update order status:', error);

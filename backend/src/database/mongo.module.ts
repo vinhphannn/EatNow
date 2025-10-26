@@ -11,8 +11,6 @@ try {
 }
 import { RestaurantModule } from '../restaurant/restaurant.module';
 import { Item, ItemSchema } from '../restaurant/schemas/item.schema';
-import { SearchController } from '../search/search.controller';
-import { SearchService } from '../search/search.service';
 
 @Module({
   imports: [
@@ -20,7 +18,7 @@ import { SearchService } from '../search/search.service';
     MongooseModule.forFeature([{ name: Item.name, schema: ItemSchema }]),
     RestaurantModule,
   ],
-  controllers: [SearchController],
+  controllers: [],
   providers: [
     createClient
       ? {
@@ -40,9 +38,8 @@ import { SearchService } from '../search/search.service';
           provide: 'OPENSEARCH',
           useValue: null,
         },
-    SearchService,
   ],
-  exports: ['OPENSEARCH', SearchService],
+  exports: ['OPENSEARCH'],
 })
 export class MongoModule {}
 

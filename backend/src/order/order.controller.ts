@@ -1,16 +1,17 @@
-import { Controller, Get, Post, Put, Param, Body, UseGuards, Request, Patch } from '@nestjs/common';
+import { Controller, Get, Post, Put, Param, Body, UseGuards, Request, Patch, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { OrderService } from './order.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OrderStatus } from './schemas/order.schema';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
-import { NotificationGateway } from '../notification/notification.gateway';
+import { OptimizedNotificationGateway } from '../notification/optimized-notification.gateway';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Connection as MongoConnection, Types } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { Order, OrderDocument } from './schemas/order.schema';
 import { Driver, DriverDocument } from '../driver/schemas/driver.schema';
+import { AuditLog, AuditAction, AuditLevel } from '../common/schemas/audit-log.schema';
 import { Model } from 'mongoose';
 
 @ApiTags('orders')
@@ -18,9 +19,10 @@ import { Model } from 'mongoose';
 export class OrderController {
   constructor(
     private readonly orderService: OrderService,
-    private readonly gateway: NotificationGateway,
+    private readonly gateway: OptimizedNotificationGateway,
     @InjectModel(Order.name) private orderModel: Model<OrderDocument>,
     @InjectModel(Driver.name) private driverModel: Model<DriverDocument>,
+    @InjectModel(AuditLog.name) private auditLogModel: Model<AuditLog>,
     @InjectConnection() private readonly mongo: MongoConnection,
   ) {}
 
@@ -31,6 +33,21 @@ export class OrderController {
   async createOrder(@Request() req, @Body() orderData: any) {
     const customerId = req.user.id;
     return this.orderService.createOrder(customerId, orderData);
+  }
+
+  @Post('from-cart')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create order from cart' })
+  async createOrderFromCart(@Request() req, @Body() orderData: any) {
+    const customerId = req.user.id;
+    const { restaurantId, ...orderDetails } = orderData;
+    
+    return await this.orderService.createOrderFromCart(
+      customerId,
+      restaurantId,
+      orderDetails
+    );
   }
 
   @Get('available')
@@ -81,6 +98,7 @@ export class OrderController {
   async getCustomerOrders(@Request() req) {
     const customerId = req.user.id;
     console.log('🔍 OrderController: Getting orders for customer:', customerId);
+    console.log('🔍 OrderController: User object:', req.user);
     
     try {
       const orders = await this.orderService.getOrdersByCustomer(customerId);
@@ -102,41 +120,16 @@ export class OrderController {
     const restaurant = await this.orderService.findRestaurantByOwnerId(userId);
     console.log('🔍 OrderController: Restaurant found for user:', userId, !!restaurant);
     
-    // If no restaurant found, still return mock data for testing
     if (!restaurant) {
-      console.log('⚠️ OrderController: No restaurant found, returning mock orders data');
+      throw new Error('Restaurant not found for this user');
     }
     
-    // Mock data for now
-    const mockOrders = [
-      {
-        _id: '1',
-        code: 'ORD001',
-        customer: { name: 'Nguyễn Văn A', phone: '0123456789' },
-        items: [
-          { name: 'Phở Bò', quantity: 1, price: 45000 },
-          { name: 'Bánh Mì', quantity: 2, price: 20000 }
-        ],
-        finalTotal: 65000,
-        status: 'pending',
-        createdAt: new Date('2024-01-16T10:30:00Z')
-      },
-      {
-        _id: '2',
-        code: 'ORD002',
-        customer: { name: 'Trần Thị B', phone: '0987654321' },
-        items: [
-          { name: 'Bún Chả', quantity: 1, price: 35000 }
-        ],
-        finalTotal: 35000,
-        status: 'preparing',
-        createdAt: new Date('2024-01-16T09:15:00Z')
-      }
-    ];
+    // Get real orders for this restaurant
+    const orders = await this.orderService.getOrdersByRestaurant(String(restaurant._id));
     
     return {
       success: true,
-      data: mockOrders,
+      data: orders,
       message: 'Orders retrieved successfully'
     };
   }
@@ -241,6 +234,86 @@ export class OrderController {
     return { ok: true };
   }
 
+  // Driver accepts available order (new endpoint for accepting unassigned orders)
+  @Post(':id/accept-available')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('driver')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Driver accepts an available order' })
+  async acceptAvailableOrder(@Request() req: any, @Param('id') orderId: string) {
+    try {
+      const driverUserId = req.user?.id;
+      if (!driverUserId) return { ok: false, message: 'Unauthorized' };
+
+      // Use the existing service method
+      const updatedOrder = await this.orderService.acceptOrderByDriver(orderId, driverUserId);
+      
+      console.log('✅ Order accepted - Order ID:', orderId);
+      console.log('✅ Updated order:', updatedOrder);
+      
+      // Get driver info for notifications
+      const driver = await this.driverModel.findOne({ userId: new Types.ObjectId(driverUserId) }).lean();
+      if (!driver) return { ok: false, message: 'Driver not found' };
+
+      // Send socket notifications
+      try {
+        // Notify restaurant
+        this.gateway.notifyOrderUpdate(String(updatedOrder.restaurantId), orderId, 'picking_up');
+        
+        // Notify customer
+        this.gateway.notifyOrderUpdate(String(updatedOrder.customerId), orderId, 'picking_up');
+        
+        // Add driver to order room
+        this.gateway.addDriverToOrderRoom(String(driver._id), orderId);
+      } catch (socketError) {
+        console.error('Socket notification error:', socketError);
+      }
+
+      // Log the acceptance
+      console.log(`Driver ${driverUserId} accepted order ${orderId} at ${new Date().toISOString()}`);
+
+      // Create audit log entry
+      try {
+        await this.auditLogModel.create({
+          userId: new Types.ObjectId(driverUserId),
+          action: AuditAction.ORDER_STATUS_CHANGED,
+          level: AuditLevel.INFO,
+          description: `Driver accepted available order ${orderId}`,
+          details: {
+            orderId: orderId,
+            driverId: String(driver._id),
+            previousStatus: 'ready',
+            newStatus: 'picking_up',
+            action: 'driver_accept'
+          },
+          orderId: new Types.ObjectId(orderId),
+          driverId: new Types.ObjectId(driver._id),
+          platform: 'driver_web',
+          isVisible: true
+        });
+      } catch (logError) {
+        console.error('Failed to create audit log:', logError);
+      }
+
+      return { 
+        ok: true, 
+        message: 'Order accepted successfully',
+        order: {
+          id: String(updatedOrder._id),
+          status: updatedOrder.status,
+          driverId: String(updatedOrder.driverId),
+          assignedAt: updatedOrder.assignedAt
+        }
+      };
+    } catch (error: any) {
+      console.error('Error accepting available order:', error);
+      return { 
+        ok: false, 
+        message: error.message || 'Failed to accept order' 
+      };
+    }
+  }
+
   // Driver rejects an assigned order
   @Post(':id/reject')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -276,7 +349,7 @@ export class OrderController {
     @Param('id') orderId: string,
     @Body() body: { status: OrderStatus; driverId?: string }
   ) {
-    return this.orderService.updateOrderStatus(orderId, body.status, body.driverId);
+    return this.orderService.updateOrderStatus(orderId, { status: body.status, driverId: body.driverId });
   }
 
   @Put(':id/cancel')
@@ -284,7 +357,18 @@ export class OrderController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Cancel order' })
   async cancelOrder(@Request() req, @Param('id') orderId: string) {
-    const customerId = req.user.id;
+    const userId = req.user.id;
+    console.log('🔍 OrderController: Cancelling order for user:', userId);
+    
+    // Find customer by user ID
+    const customer = await this.orderService.findCustomerByUserId(userId);
+    if (!customer) {
+      throw new NotFoundException('Customer profile not found');
+    }
+    
+    const customerId = (customer as any)._id;
+    console.log('🔍 OrderController: Found customer ID:', customerId);
+    
     return this.orderService.cancelOrder(orderId, customerId);
   }
 

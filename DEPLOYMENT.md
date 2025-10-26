@@ -5,10 +5,11 @@
 ### Backend Deployment (Render/Railway)
 
 1. **Connect Repository**
+
    - Connect your GitHub repository to Render/Railway
    - Select the `backend` directory as root
-
 2. **Environment Variables**
+
    ```env
    NODE_ENV=production
    PORT=3001
@@ -17,30 +18,32 @@
    JWT_EXPIRES_IN=7d
    REDIS_URL=redis://username:password@host:port
    ```
-
 3. **Build Settings**
+
    - Build Command: `npm run build`
    - Start Command: `npm run start`
 
 ### Frontend Deployment (Vercel/Netlify)
 
 1. **Connect Repository**
+
    - Connect your GitHub repository to Vercel/Netlify
    - Select the `frontend` directory as root
-
 2. **Environment Variables**
+
    ```env
    NEXT_PUBLIC_API_URL=https://your-backend-url.com/api/v1
    NEXT_PUBLIC_WS_URL=wss://your-backend-url.com
    ```
-
 3. **Build Settings**
+
    - Build Command: `npm run build`
    - Output Directory: `.next`
 
 ## 🐳 Docker Deployment (Optional)
 
 ### Backend Dockerfile
+
 ```dockerfile
 FROM node:18-alpine
 WORKDIR /app
@@ -53,6 +56,7 @@ CMD ["npm", "run", "start"]
 ```
 
 ### Frontend Dockerfile
+
 ```dockerfile
 FROM node:18-alpine AS builder
 WORKDIR /app
@@ -72,6 +76,7 @@ CMD ["npm", "start"]
 ```
 
 ### Docker Compose
+
 ```yaml
 version: '3.8'
 services:
@@ -116,6 +121,7 @@ volumes:
 ### Production Environment Variables
 
 #### Backend
+
 ```env
 NODE_ENV=production
 PORT=3000
@@ -127,6 +133,7 @@ CORS_ORIGIN=https://your-frontend-domain.com
 ```
 
 #### Frontend
+
 ```env
 NEXT_PUBLIC_API_URL=https://your-backend-domain.com/api/v1
 NEXT_PUBLIC_WS_URL=wss://your-backend-domain.com
@@ -137,12 +144,14 @@ NEXT_PUBLIC_APP_VERSION=1.0.0
 ## 📊 Database Setup
 
 ### MongoDB Atlas
+
 1. Create MongoDB Atlas cluster
 2. Configure network access (0.0.0.0/0 for production)
 3. Create database user
 4. Get connection string
 
 ### Redis Cloud
+
 1. Create Redis Cloud account
 2. Create new database
 3. Get connection string
@@ -150,6 +159,7 @@ NEXT_PUBLIC_APP_VERSION=1.0.0
 ## 🔒 Security Considerations
 
 ### Backend Security
+
 - Use strong JWT secrets
 - Enable CORS for specific domains
 - Implement rate limiting
@@ -157,6 +167,7 @@ NEXT_PUBLIC_APP_VERSION=1.0.0
 - Validate all inputs
 
 ### Frontend Security
+
 - Use HTTPS
 - Implement CSP headers
 - Sanitize user inputs
@@ -165,12 +176,14 @@ NEXT_PUBLIC_APP_VERSION=1.0.0
 ## 📈 Performance Optimization
 
 ### Backend
+
 - Enable gzip compression
 - Implement caching
 - Use connection pooling
 - Optimize database queries
 
 ### Frontend
+
 - Enable Next.js optimizations
 - Use CDN for static assets
 - Implement image optimization
@@ -179,6 +192,7 @@ NEXT_PUBLIC_APP_VERSION=1.0.0
 ## 🔍 Monitoring
 
 ### Health Checks
+
 ```javascript
 // Backend health check
 GET /health
@@ -194,6 +208,7 @@ GET /health
 ```
 
 ### Logging
+
 - Use structured logging
 - Implement log aggregation
 - Monitor error rates
@@ -204,15 +219,16 @@ GET /health
 ### Common Issues
 
 1. **Database Connection**
+
    - Check MongoDB URI
    - Verify network access
    - Check credentials
-
 2. **CORS Errors**
+
    - Update CORS_ORIGIN
    - Check frontend URL
-
 3. **Build Failures**
+
    - Check Node.js version
    - Clear node_modules
    - Check environment variables

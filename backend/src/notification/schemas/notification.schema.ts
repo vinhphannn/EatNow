@@ -1,209 +1,134 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument, Types } from 'mongoose';
+import { Document, Types } from 'mongoose';
 
-export type NotificationDocument = HydratedDocument<Notification>;
+export type NotificationDocument = Notification & Document;
+
+export enum NotificationActor {
+  CUSTOMER = 'customer',
+  RESTAURANT = 'restaurant', 
+  DRIVER = 'driver',
+  ADMIN = 'admin',
+}
 
 export enum NotificationType {
-  ORDER = 'order',
-  PROMOTION = 'promotion',
-  SYSTEM = 'system',
-  DELIVERY = 'delivery',
-  REVIEW = 'review',
-  PAYMENT = 'payment',
-  ACCOUNT = 'account',
-  MARKETING = 'marketing',
+  // Customer notifications
+  ORDER_CONFIRMED = 'order_confirmed',
+  ORDER_PREPARING = 'order_preparing', 
+  ORDER_READY = 'order_ready',
+  ORDER_DELIVERING = 'order_delivering',
+  ORDER_DELIVERED = 'order_delivered',
+  ORDER_CANCELLED = 'order_cancelled',
+  PAYMENT_SUCCESS = 'payment_success',
+  PAYMENT_FAILED = 'payment_failed',
+  
+  // Restaurant notifications
+  NEW_ORDER = 'new_order',
+  ORDER_ACCEPTED = 'order_accepted',
+  ORDER_REJECTED = 'order_rejected',
+  DRIVER_ASSIGNED = 'driver_assigned',
+  DRIVER_ARRIVED = 'driver_arrived',
+  
+  // Driver notifications
+  ORDER_ASSIGNED = 'order_assigned',
+  ORDER_PICKUP_READY = 'order_pickup_ready',
+  ORDER_DELIVERY_COMPLETE = 'order_delivery_complete',
+  PAYMENT_COLLECTED = 'payment_collected',
+  
+  // Admin notifications
+  SYSTEM_ALERT = 'system_alert',
+  RESTAURANT_REGISTRATION = 'restaurant_registration',
+  DRIVER_REGISTRATION = 'driver_registration',
+  PAYMENT_ISSUE = 'payment_issue',
 }
 
 export enum NotificationPriority {
   LOW = 'low',
-  NORMAL = 'normal',
+  MEDIUM = 'medium',
   HIGH = 'high',
   URGENT = 'urgent',
 }
 
-export enum NotificationStatus {
-  PENDING = 'pending',
-  SENT = 'sent',
-  DELIVERED = 'delivered',
-  READ = 'read',
-  FAILED = 'failed',
-}
-
 @Schema({ timestamps: true })
 export class Notification {
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
-  userId: any;
+  // Target actor (who receives this notification)
+  @Prop({ 
+    type: String, 
+    enum: Object.values(NotificationActor), 
+    required: true 
+  })
+  targetActor: NotificationActor;
 
-  @Prop({ enum: NotificationType, required: true })
-  type: NotificationType;
-
-  @Prop({ enum: NotificationPriority, default: NotificationPriority.NORMAL })
-  priority: NotificationPriority;
-
-  @Prop({ enum: NotificationStatus, default: NotificationStatus.PENDING })
-  status: NotificationStatus;
-
-  @Prop({ required: true, trim: true })
-  title: string;
-
-  @Prop({ required: true, trim: true })
-  message: string;
-
-  @Prop({ trim: true })
-  actionUrl?: string;
-
-  @Prop()
-  imageUrl?: string;
-
-  @Prop({ type: Types.ObjectId, ref: 'Image' })
-  imageId?: any;
+  // Target user ID (restaurantId, customerId, driverId, adminId)
+  @Prop({ required: true })
+  targetUserId: string;
 
   // Related entities
-  @Prop({ type: Types.ObjectId, ref: 'Order' })
-  orderId?: any;
+  @Prop({ type: Types.ObjectId, ref: 'Order', required: false })
+  orderId?: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Restaurant' })
-  restaurantId?: any;
+  @Prop({ type: Types.ObjectId, ref: 'Restaurant', required: false })
+  restaurantId?: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Driver' })
-  driverId?: any;
+  @Prop({ type: Types.ObjectId, ref: 'Customer', required: false })
+  customerId?: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Promotion' })
-  promotionId?: any;
+  @Prop({ type: Types.ObjectId, ref: 'Driver', required: false })
+  driverId?: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Review' })
-  reviewId?: any;
+  // Notification content
+  @Prop({ 
+    type: String, 
+    enum: Object.values(NotificationType), 
+    required: true 
+  })
+  type: NotificationType;
 
-  // Delivery channels
+  @Prop({ required: true })
+  title: string;
+
+  @Prop({ required: true })
+  content: string;
+
+  @Prop({ 
+    type: String, 
+    enum: Object.values(NotificationPriority), 
+    default: NotificationPriority.MEDIUM 
+  })
+  priority: NotificationPriority;
+
+  // Read status
   @Prop({ default: false })
-  pushNotification: boolean;
+  read: boolean;
 
-  @Prop({ default: false })
-  emailNotification: boolean;
-
-  @Prop({ default: false })
-  smsNotification: boolean;
-
-  @Prop({ default: false })
-  inAppNotification: boolean;
-
-  // Scheduling
-  @Prop({ default: Date.now })
-  scheduledFor: Date;
-
-  @Prop()
-  sentAt?: Date;
-
-  @Prop()
-  deliveredAt?: Date;
-
-  @Prop()
+  @Prop({ type: Date, required: false })
   readAt?: Date;
 
-  @Prop()
-  failedAt?: Date;
-
-  @Prop({ trim: true })
-  failureReason?: string;
-
-  // Targeting and personalization
-  @Prop({ type: Object })
+  // Additional data
+  @Prop({ type: Object, required: false })
   metadata?: {
-    campaignId?: string;
-    segmentId?: string;
-    personalizationData?: Record<string, any>;
-    trackingData?: Record<string, any>;
+    orderCode?: string;
+    customerName?: string;
+    restaurantName?: string;
+    driverName?: string;
+    total?: number;
+    deliveryAddress?: string;
+    [key: string]: any;
   };
 
-  // User preferences
-  @Prop({ default: true })
-  allowPush: boolean;
+  // Timestamps
+  @Prop({ default: Date.now })
+  createdAt: Date;
 
-  @Prop({ default: true })
-  allowEmail: boolean;
-
-  @Prop({ default: false })
-  allowSMS: boolean;
-
-  // Analytics
-  @Prop({ default: 0 })
-  openCount: number;
-
-  @Prop({ default: 0 })
-  clickCount: number;
-
-  @Prop()
-  firstOpenedAt?: Date;
-
-  @Prop()
-  lastOpenedAt?: Date;
-
-  @Prop()
-  firstClickedAt?: Date;
-
-  @Prop()
-  lastClickedAt?: Date;
-
-  // Batch and campaign info
-  @Prop()
-  batchId?: string;
-
-  @Prop()
-  campaignId?: string;
-
-  @Prop()
-  templateId?: string;
-
-  // Expiration
-  @Prop()
-  expiresAt?: Date;
-
-  @Prop({ default: false })
-  isExpired: boolean;
-
-  // Retry mechanism
-  @Prop({ default: 0 })
-  retryCount: number;
-
-  @Prop({ default: 3 })
-  maxRetries: number;
-
-  @Prop()
-  nextRetryAt?: Date;
-
-  // Device and platform info
-  @Prop()
-  deviceId?: string;
-
-  @Prop()
-  platform?: string; // ios, android, web
-
-  @Prop()
-  appVersion?: string;
-
-  // Localization
-  @Prop({ default: 'vi' })
-  language: string;
-
-  @Prop({ default: 'VN' })
-  country: string;
-
-  @Prop()
-  timezone?: string;
+  @Prop({ default: Date.now })
+  updatedAt: Date;
 }
 
 export const NotificationSchema = SchemaFactory.createForClass(Notification);
 
-// Indexes for efficient queries
-NotificationSchema.index({ userId: 1, status: 1, createdAt: -1 });
-NotificationSchema.index({ userId: 1, type: 1, createdAt: -1 });
-NotificationSchema.index({ status: 1, scheduledFor: 1 });
-NotificationSchema.index({ type: 1, priority: 1, createdAt: -1 });
-NotificationSchema.index({ batchId: 1 });
-NotificationSchema.index({ campaignId: 1 });
-NotificationSchema.index({ expiresAt: 1 });
-NotificationSchema.index({ nextRetryAt: 1 });
-NotificationSchema.index({ createdAt: -1 });
-
-// TTL index for expired notifications (auto-delete after 30 days)
-NotificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 2592000, partialFilterExpression: { isExpired: true } });
+// Indexes for better performance
+NotificationSchema.index({ targetActor: 1, targetUserId: 1, createdAt: -1 });
+NotificationSchema.index({ targetActor: 1, targetUserId: 1, read: 1 });
+NotificationSchema.index({ orderId: 1 });
+NotificationSchema.index({ restaurantId: 1, createdAt: -1 });
+NotificationSchema.index({ customerId: 1, createdAt: -1 });
+NotificationSchema.index({ driverId: 1, createdAt: -1 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { Inter } from "next/font/google";
+import { useEffect } from "react";
 import "./globals.css";
 import { ToastProvider, AppLoadingProvider } from "../components";
 import { SocketCleanupProvider } from "../components/SocketCleanupProvider";
@@ -27,8 +28,34 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 			},
 		},
 	});
+
+	// Fix hydration mismatch by removing mdl-js class on client side
+	useEffect(() => {
+		const htmlElement = document.documentElement;
+		if (htmlElement) {
+			htmlElement.classList.remove('mdl-js');
+		}
+	}, []);
+
+	// Suppress browser extension errors
+	useEffect(() => {
+		const originalError = console.error;
+		console.error = (...args) => {
+			const message = args.join(' ');
+			if (message.includes('runtime.lastError') || 
+				message.includes('Receiving end does not exist')) {
+				return; // Suppress these errors
+			}
+			originalError.apply(console, args);
+		};
+
+		return () => {
+			console.error = originalError;
+		};
+	}, []);
+
 	return (
-		<html lang="vi" className={`${inter.variable} font-sans`}>
+		<html lang="vi" className={`${inter.variable} font-sans`} suppressHydrationWarning>
 			<head>
 				<title>{`${APP_CONFIG.NAME} - ${APP_CONFIG.DESCRIPTION}`}</title>
 				<meta name="description" content={APP_CONFIG.DESCRIPTION} />

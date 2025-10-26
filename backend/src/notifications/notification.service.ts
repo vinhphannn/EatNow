@@ -5,7 +5,7 @@ import { Model } from 'mongoose';
 @Injectable()
 export class NotificationService {
   constructor(
-    // @InjectModel('Notification') private notificationModel: Model<any>,
+    @InjectModel('Notification') private notificationModel: Model<any>,
   ) {}
 
   async getNotifications(userId: string, options: {
@@ -16,66 +16,71 @@ export class NotificationService {
     limit: number;
     unreadOnly?: boolean;
   }) {
-    // Mock data for now
-    const mockNotifications = [
-      {
-        id: '1',
-        userId,
-        type: 'order',
-        priority: 'normal',
-        status: 'unread',
-        title: 'Đơn hàng đã được xác nhận',
-        message: 'Đơn hàng #12345 của bạn đã được xác nhận và đang được chuẩn bị.',
-        createdAt: new Date().toISOString(),
-        readAt: null
-      },
-      {
-        id: '2',
-        userId,
-        type: 'promotion',
-        priority: 'high',
-        status: 'unread',
-        title: 'Khuyến mãi mới!',
-        message: 'Giảm 20% cho đơn hàng đầu tiên. Mã: WELCOME20',
-        createdAt: new Date(Date.now() - 3600000).toISOString(),
-        readAt: null
-      }
-    ];
+    // Get real notifications from database
+    const notifications = await this.notificationModel
+      .find({ userId })
+      .sort({ createdAt: -1 })
+      .skip((options.page - 1) * options.limit)
+      .limit(options.limit)
+      .lean();
+
+    const total = await this.notificationModel.countDocuments({ userId });
 
     return {
-      notifications: mockNotifications,
+      notifications,
       pagination: {
         page: options.page,
         limit: options.limit,
-        total: mockNotifications.length,
-        totalPages: Math.ceil(mockNotifications.length / options.limit)
+        total,
+        totalPages: Math.ceil(total / options.limit)
       }
     };
   }
 
   async getUnreadCount(userId: string): Promise<number> {
-    // Mock data - return 2 unread notifications
-    return 2;
+    return await this.notificationModel.countDocuments({ 
+      userId, 
+      status: 'unread' 
+    });
   }
 
   async getStats(userId: string) {
+    const total = await this.notificationModel.countDocuments({ userId });
+    const unread = await this.notificationModel.countDocuments({ 
+      userId, 
+      status: 'unread' 
+    });
+    
+    const byType = await this.notificationModel.aggregate([
+      { $match: { userId } },
+      { $group: { _id: '$type', count: { $sum: 1 } } }
+    ]);
+
+    const byPriority = await this.notificationModel.aggregate([
+      { $match: { userId } },
+      { $group: { _id: '$priority', count: { $sum: 1 } } }
+    ]);
+
+    const byStatus = await this.notificationModel.aggregate([
+      { $match: { userId } },
+      { $group: { _id: '$status', count: { $sum: 1 } } }
+    ]);
+
     return {
-      total: 5,
-      unread: 2,
-      byType: {
-        order: 2,
-        promotion: 2,
-        system: 1
-      },
-      byPriority: {
-        low: 1,
-        normal: 2,
-        high: 2
-      },
-      byStatus: {
-        unread: 2,
-        read: 3
-      }
+      total,
+      unread,
+      byType: byType.reduce((acc, item) => {
+        acc[item._id] = item.count;
+        return acc;
+      }, {}),
+      byPriority: byPriority.reduce((acc, item) => {
+        acc[item._id] = item.count;
+        return acc;
+      }, {}),
+      byStatus: byStatus.reduce((acc, item) => {
+        acc[item._id] = item.count;
+        return acc;
+      }, {})
     };
   }
 

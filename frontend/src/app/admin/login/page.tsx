@@ -36,7 +36,11 @@ export default function AdminLoginPage() {
       console.log("🔍 AdminLogin: Starting login process...");
       await login({ email, password });
       console.log("🔍 AdminLogin: Login completed successfully");
-      // Navigation will be handled by useEffect above
+      // Fallback redirect in case auth state updates are delayed
+      if (!hasRedirected) {
+        setHasRedirected(true);
+        router.replace('/admin/dashboard');
+      }
     } catch (err) {
       // Error is handled by AuthContext
       console.error('🔍 AdminLogin: Login error:', err);

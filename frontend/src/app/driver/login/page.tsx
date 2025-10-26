@@ -43,6 +43,13 @@ function DriverLoginContent() {
 
     try {
       await login({ email, password });
+      
+      // Set driver_token cookie for middleware protection
+      // This is in addition to the HttpOnly cookie set by backend
+      if (typeof document !== 'undefined') {
+        document.cookie = `driver_token=1; path=/; SameSite=Lax; max-age=${60 * 60}`; // 1 hour
+      }
+      
       // Cookie-based redirect
       window.location.href = '/driver/dashboard';
     } catch (err) {

@@ -101,27 +101,124 @@ export class DriverService {
   }
 
   async getCurrentOrders(userId: string) {
-    const driver = await this.driverModel.findOne({ userId });
+    const driver = await this.driverModel.findOne({ userId: new Types.ObjectId(userId) }).lean();
     if (!driver) throw new NotFoundException('Driver not found');
 
+    console.log('🔍 Loading current orders for driver:', driver._id);
+    console.log('🔍 Driver userId:', userId);
+
+    // Find orders where driverId matches this driver's _id (as ObjectId)
     const orders = await this.orderModel
       .find({
-        driverId: driver._id,
+        driverId: (driver as any)._id,
         status: { $nin: ['delivered', 'cancelled'] }
       })
-      .populate('restaurantId', 'name')
-      .populate('userId', 'name')
+      .populate('restaurantId', 'name address coordinates')
+      .populate('customerId', 'name phone')
       .sort({ createdAt: -1 })
       .lean();
 
+    console.log('🔍 Found orders:', orders.length);
+
     return orders.map((order: any) => ({
       _id: order._id,
-      orderNumber: order.orderNumber,
+      id: String(order._id),
+      orderNumber: order.orderNumber || order.code,
+      code: order.code,
       status: order.status,
       restaurantName: order.restaurantId?.name || 'N/A',
-      customerName: order.userId?.name || 'N/A',
-      totalAmount: order.totalAmount,
+      restaurantAddress: order.restaurantId?.address || '',
+      customerName: order.customerId?.name || order.deliveryAddress?.recipientName || 'N/A',
+      customerPhone: order.customerId?.phone || order.deliveryAddress?.recipientPhone || '',
+      customerAddress: order.deliveryAddress?.addressLine || '',
+      totalAmount: order.total || order.finalTotal || order.totalAmount,
+      deliveryFee: order.deliveryFee,
+      createdAt: order.createdAt,
+      assignedAt: order.assignedAt,
+      items: order.items || [],
+      deliveryAddress: order.deliveryAddress
     }));
+  }
+
+  async getDriverByUserId(userId: string) {
+    console.log('🔍 getDriverByUserId called with:', userId);
+    
+    // Ensure driver doc exists
+    let driver = await this.driverModel.findOne({ userId }).lean();
+    console.log('🔍 Found driver:', driver ? { _id: driver._id, userId: driver.userId } : null);
+    
+    if (!driver) {
+      const created = await this.driverModel.create({ userId, status: 'inactive' } as any);
+      driver = created?.toObject?.() || (created as any);
+      console.log('🔍 Created new driver:', { _id: driver._id, userId: driver.userId });
+    }
+    return driver;
+  }
+
+  async getDriverHistory(userId: string, page = 1, limit = 20) {
+    console.log('🔍 getDriverHistory called with:', { userId, page, limit });
+    
+    const driver = await this.driverModel.findOne({ userId: new Types.ObjectId(userId) }).lean();
+    console.log('🔍 Found driver:', driver ? { _id: driver._id, userId: driver.userId } : null);
+    
+    if (!driver) throw new NotFoundException('Driver not found');
+
+    console.log('🔍 Loading driver history for driver:', driver._id);
+
+    const skip = (page - 1) * limit;
+    
+    const orders = await this.orderModel
+      .find({
+        driverId: (driver as any)._id,
+        status: { $in: ['delivered', 'cancelled'] }
+      })
+      .populate('restaurantId', 'name address coordinates')
+      .populate('customerId', 'name phone')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const total = await this.orderModel.countDocuments({
+      driverId: (driver as any)._id,
+      status: { $in: ['delivered', 'cancelled'] }
+    });
+
+    console.log('🔍 Found history orders:', orders.length, 'Total:', total);
+
+    return {
+      orders: orders.map((order: any) => ({
+        _id: order._id,
+        id: String(order._id),
+        code: order.orderNumber || order.code,
+        status: order.status,
+        restaurantName: order.restaurantId?.name || 'N/A',
+        restaurantAddress: order.restaurantId?.address || '',
+        customerName: order.customerId?.name || order.deliveryAddress?.recipientName || 'N/A',
+        customerPhone: order.customerId?.phone || order.deliveryAddress?.recipientPhone || '',
+        customerAddress: order.deliveryAddress?.addressLine || '',
+        totalAmount: order.total || order.finalTotal || order.totalAmount,
+        deliveryFee: order.deliveryFee,
+        createdAt: order.createdAt,
+        deliveredAt: order.deliveredAt || order.updatedAt,
+        items: order.items || [],
+        deliveryAddress: order.deliveryAddress
+      })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    };
+  }
+
+  async updateDriverStatus(driverId: string, updateData: any) {
+    return await this.driverModel.findByIdAndUpdate(
+      driverId,
+      { $set: updateData },
+      { new: true }
+    );
   }
 
   async getMyProfile(userId: string) {

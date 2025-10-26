@@ -10,7 +10,7 @@ export class Driver {
   userId: any;
 
   @Prop({ default: 'inactive' })
-  status: string; // inactive | active | suspended
+  status: string; // inactive | available | delivering | offline | suspended
 
   // Location tracking
   @Prop({ type: [Number], default: [0, 0] })
@@ -18,6 +18,13 @@ export class Driver {
 
   @Prop({ type: Date })
   lastLocationAt?: Date;
+
+  // Current order tracking
+  @Prop({ type: Types.ObjectId, ref: 'Order' })
+  currentOrderId?: Types.ObjectId;
+
+  @Prop({ type: Date })
+  currentOrderStartedAt?: Date;
 
   // Performance metrics
   @Prop({ default: 0 })
@@ -64,6 +71,20 @@ export class Driver {
 
   @Prop({ default: 0 })
   performanceScore: number;
+
+  // Active workload tracking
+  @Prop({ default: 0 })
+  activeOrdersCount: number; // Số đơn đang giao
+
+  @Prop({ default: 0 })
+  maxConcurrentOrders: number; // Số đơn tối đa có thể gán cùng lúc (default: 1)
+
+  // Distance efficiency
+  @Prop({ default: 0 })
+  averageDistancePerOrder: number; // km
+
+  @Prop({ default: 0 })
+  totalDistanceTraveled: number; // km
 
   // Auto simulation mode for development/testing
   @Prop({ default: false })

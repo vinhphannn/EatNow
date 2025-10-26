@@ -48,10 +48,10 @@ export class RestaurantController {
     return this.restaurantService.findAllPublicRestaurants({ limit, skip });
   }
 
-  // Public endpoint: lấy tất cả categories
-  @Get('categories/public')
-  async findAllPublicCategories() {
-    return this.restaurantService.findAllPublicCategories();
+  // Public endpoint: lấy featured collections
+  @Get('featured-collections')
+  async getFeaturedCollections() {
+    return this.restaurantService.getFeaturedCollections();
   }
 
   // Public endpoint: lấy restaurants theo category cho customer
@@ -69,6 +69,79 @@ export class RestaurantController {
       skip,
       category 
     });
+  }
+
+  @Get('test-search')
+  async testSearch(@Query('q') query: string) {
+    return {
+      success: true,
+      message: 'Test search endpoint works!',
+      query,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  @Get('search')
+  async searchRestaurants(
+    @Query('q') query: string,
+    @Query('limit') limit: string = '10',
+    @Query('offset') offset: string = '0'
+  ) {
+    if (!query || query.trim().length === 0) {
+      return { restaurants: [], total: 0 };
+    }
+
+    const searchRegex = new RegExp(query.trim(), 'i');
+    
+    // Tìm kiếm restaurants theo tên, mô tả, địa chỉ
+    const restaurants = await this.restaurantService.findAllPublicRestaurants({
+      limit: parseInt(limit),
+      skip: parseInt(offset)
+    });
+
+    // Filter kết quả theo query
+    const filteredRestaurants = restaurants.filter((restaurant: any) => 
+      restaurant.name?.toLowerCase().includes(query.toLowerCase()) ||
+      restaurant.description?.toLowerCase().includes(query.toLowerCase()) ||
+      restaurant.address?.toLowerCase().includes(query.toLowerCase())
+    );
+
+    return {
+      restaurants: filteredRestaurants,
+      total: filteredRestaurants.length,
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    };
+  }
+
+  @Get('items-search')
+  async searchItems(
+    @Query('q') query: string,
+    @Query('limit') limit: string = '20',
+    @Query('offset') offset: string = '0'
+  ) {
+    if (!query || query.trim().length === 0) {
+      return { items: [], total: 0 };
+    }
+
+    // Tìm kiếm items theo tên, mô tả
+    const items = await this.restaurantService.findAllItems({
+      limit: parseInt(limit),
+      skip: parseInt(offset)
+    });
+
+    // Filter kết quả theo query
+    const filteredItems = items.filter((item: any) => 
+      item.name?.toLowerCase().includes(query.toLowerCase()) ||
+      item.description?.toLowerCase().includes(query.toLowerCase())
+    );
+
+    return {
+      items: filteredItems,
+      total: filteredItems.length,
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    };
   }
 
   // Lấy nhà hàng theo user hiện tại (đã auth) - không tự động tạo mới để tránh trùng
@@ -100,6 +173,14 @@ export class RestaurantController {
   async getDashboardStats(@Req() req: any) {
     const userId = req.user.id;
     return this.restaurantService.getDashboardStats(userId);
+  }
+
+  // Today's stats for sidebar
+  @UseGuards(JwtAuthGuard)
+  @Get(':id/stats/today')
+  async getTodayStats(@Param('id') restaurantId: string, @Req() req: any) {
+    const userId = req.user.id;
+    return this.restaurantService.getTodayStats(restaurantId, userId);
   }
 
   // Wallet summary for current restaurant owner
@@ -209,8 +290,45 @@ export class RestaurantController {
   @UseGuards(JwtAuthGuard, RolesGuard, OwnershipGuard)
   @Roles('admin','restaurant')
   @Post(':restaurantId/items')
-  async createItem(@Param('restaurantId') restaurantId: string, @Body() body: { name: string; price: number; type: 'food'|'drink'; categoryId?: string; description?: string; imageUrl?: string; isActive?: boolean; position?: number }) {
-    return this.restaurantService.createItem(restaurantId, body);
+  async createItem(@Param('restaurantId') restaurantId: string, @Body() body: { 
+    name: string; 
+    basePrice: number;
+    categoryId?: string; 
+    subCategoryId?: string;
+    description?: string; 
+    imageUrl?: string; 
+    isActive?: boolean; 
+    position?: number; 
+    preparationTime?: number;
+    options?: any[];
+  }) {
+    console.log('=== RESTAURANT CONTROLLER CREATE ITEM ===');
+    console.log('[RestaurantController] createItem received:', {
+      restaurantId,
+      body,
+      options: body.options,
+      optionsCount: body.options?.length || 0,
+      optionsDetails: body.options?.map(opt => ({
+        name: opt.name,
+        type: opt.type,
+        required: opt.required,
+        choicesCount: opt.choices?.length || 0,
+        choices: opt.choices?.map(choice => ({
+          name: choice.name,
+          price: choice.price,
+          isDefault: choice.isDefault
+        }))
+      }))
+    });
+    console.log('=== CALLING RESTAURANT SERVICE ===');
+    try {
+      const result = await this.restaurantService.createItem(restaurantId, body);
+      console.log('=== RESTAURANT SERVICE RESULT ===', result);
+      return result;
+    } catch (error) {
+      console.error('=== RESTAURANT SERVICE ERROR ===', error);
+      throw error;
+    }
   }
 
   @Get(':restaurantId/items')
@@ -240,7 +358,19 @@ export class RestaurantController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin','restaurant')
   @Patch('/items/:id')
-  async updateItem(@Param('id') id: string, @Body() body: { isActive?: boolean }) {
+  async updateItem(@Param('id') id: string, @Body() body: { 
+    name?: string; 
+    basePrice?: number; 
+    type?: 'food'|'drink'; 
+    categoryId?: string; 
+    subCategoryId?: string; 
+    description?: string; 
+    imageUrl?: string; 
+    isActive?: boolean; 
+    position?: number; 
+    preparationTime?: number; 
+    options?: any[] 
+  }) {
     return this.restaurantService.updateItem(id, body);
   }
 

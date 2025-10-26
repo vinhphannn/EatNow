@@ -6,11 +6,15 @@ import { useEffect } from "react";
 import { DriverNavBar } from "../../components";
 import { DriverGuard } from "@/components/guards/AuthGuard";
 import { useDriverAuth } from "@/contexts/AuthContext";
+import { useSocket } from "@/hooks/useSocket";
 
 export default function DriverLayout({ children }: { children: ReactNode }) {
     const pathname = usePathname();
     const router = useRouter();
     const { isAuthenticated, isLoading, user } = useDriverAuth();
+    
+  // Kết nối Socket ngay khi vào driver area
+  const { socket, connected } = useSocket(process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3001');
 
     useEffect(() => {
         if (isLoading) return;
@@ -25,6 +29,15 @@ export default function DriverLayout({ children }: { children: ReactNode }) {
             return;
         }
     }, [isAuthenticated, isLoading, user, pathname, router]);
+
+    // Kết nối Socket và join driver room khi đã authenticated
+    useEffect(() => {
+        if (isAuthenticated && user && socket && connected) {
+            // Join driver room để nhận notifications
+            socket.emit('join_driver', user.id);
+            console.log('Driver Socket connected and joined driver room');
+        }
+    }, [isAuthenticated, user, socket, connected]);
 
     // Loading gate
     if (isLoading) {

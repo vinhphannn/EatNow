@@ -26,6 +26,25 @@ export class UserService {
     await this.userModel.findByIdAndUpdate(id, { $set: set });
   }
 
+  // Update user by ID
+  async updateUser(userId: string, updateData: Partial<User>): Promise<User> {
+    try {
+      const user = await this.userModel.findByIdAndUpdate(
+        userId,
+        { $set: updateData },
+        { new: true, runValidators: true }
+      );
+
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      return user;
+    } catch (error) {
+      throw error;
+    }
+  }
+
   // Tạo user cơ bản (đã hash mật khẩu từ bên ngoài)
   async createUserBasic(payload: { email: string; passwordHash: string; name: string; phone?: string; role: UserRole | string }) {
     const { email, passwordHash, name, phone, role } = payload;

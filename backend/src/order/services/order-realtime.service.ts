@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { NotificationGateway } from '../../notification/notification.gateway';
+import { OptimizedNotificationGateway } from '../../notification/optimized-notification.gateway';
 
 @Injectable()
 export class OrderRealtimeService {
-  constructor(private readonly gateway: NotificationGateway) {}
+  constructor(private readonly gateway: OptimizedNotificationGateway) {}
 
   addDriverToOrderRoom(driverId: string, orderId: string): boolean {
     return this.gateway.addDriverToOrderRoom(driverId, orderId);

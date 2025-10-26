@@ -24,6 +24,16 @@ export class AuthService {
     @InjectModel(RefreshToken.name) private readonly refreshModel: Model<RefreshTokenDocument>,
   ) {}
 
+  // Helper function to get cookie names based on role
+  private getCookieNames(role: string) {
+    const rolePrefix = role.toLowerCase();
+    return {
+      accessToken: `${rolePrefix}_access_token`,
+      refreshToken: `${rolePrefix}_refresh_token`,
+      csrfToken: `${rolePrefix}_csrf_token`
+    };
+  }
+
   async validateUser(email: string, password: string) {
     const user = await this.users.findUserDocByEmail(email);
     if (!user) throw new UnauthorizedException('Invalid credentials');
@@ -46,8 +56,6 @@ export class AuthService {
         if (!existingCustomer) {
           const customer = new this.customerModel({
             userId: (fullUser as any)?._id,
-            name: (fullUser as any)?.name || (fullUser as any)?.fullName || u.email,
-            fullName: (fullUser as any)?.name || (fullUser as any)?.fullName || u.email,
             phone: (fullUser as any)?.phone,
           });
           await customer.save();
@@ -200,7 +208,24 @@ export class AuthService {
   }
 
   async getProfileFromCookie(req: Request) {
-    const token = req.cookies?.['access_token'];
+    // Try to find token from any role-specific cookie
+    const cookies = req.cookies || {};
+    let token: string | undefined;
+    
+    // Check all possible cookie names
+    for (const role of ['customer', 'restaurant', 'driver', 'admin']) {
+      const cookieNames = this.getCookieNames(role);
+      if (cookies[cookieNames.accessToken]) {
+        token = cookies[cookieNames.accessToken];
+        break;
+      }
+    }
+    
+    // Fallback to generic access_token
+    if (!token) {
+      token = cookies['access_token'];
+    }
+    
     if (!token) throw new UnauthorizedException('Missing token');
     try {
       const payload = await this.jwt.verifyAsync(token);
@@ -248,7 +273,24 @@ export class AuthService {
   }
 
   async rotateRefreshToken(req: Request) {
-    const raw = (req as any).cookies?.['refresh_token'];
+    // Try to find refresh token from any role-specific cookie
+    const cookies = (req as any).cookies || {};
+    let raw: string | undefined;
+    
+    // Check all possible cookie names
+    for (const role of ['customer', 'restaurant', 'driver', 'admin']) {
+      const cookieNames = this.getCookieNames(role);
+      if (cookies[cookieNames.refreshToken]) {
+        raw = cookies[cookieNames.refreshToken];
+        break;
+      }
+    }
+    
+    // Fallback to generic refresh_token
+    if (!raw) {
+      raw = cookies['refresh_token'];
+    }
+    
     if (!raw) throw new UnauthorizedException('Missing refresh token');
     const [tokenPart, jti] = String(raw).split('.');
     if (!tokenPart || !jti) throw new UnauthorizedException('Invalid refresh token');
@@ -283,7 +325,24 @@ export class AuthService {
   }
 
   async revokeCurrentRefreshToken(req: Request) {
-    const raw = (req as any).cookies?.['refresh_token'];
+    // Try to find refresh token from any role-specific cookie
+    const cookies = (req as any).cookies || {};
+    let raw: string | undefined;
+    
+    // Check all possible cookie names
+    for (const role of ['customer', 'restaurant', 'driver', 'admin']) {
+      const cookieNames = this.getCookieNames(role);
+      if (cookies[cookieNames.refreshToken]) {
+        raw = cookies[cookieNames.refreshToken];
+        break;
+      }
+    }
+    
+    // Fallback to generic refresh_token
+    if (!raw) {
+      raw = cookies['refresh_token'];
+    }
+    
     if (!raw) return { ok: true };
     const [tokenPart, jti] = String(raw).split('.');
     if (!tokenPart || !jti) return { ok: true };

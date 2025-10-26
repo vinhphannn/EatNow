@@ -8,8 +8,11 @@ export class Item {
   @Prop({ type: Types.ObjectId, ref: 'Restaurant', required: true })
   restaurantId: any;
 
-  @Prop({ type: Types.ObjectId, ref: 'Category' })
+  @Prop({ type: Types.ObjectId, ref: 'RestaurantCategory' })
   categoryId?: any;
+
+  @Prop({ type: Types.ObjectId, ref: 'SubCategory' })
+  subCategoryId?: any;
 
   @Prop({ required: true })
   name: string;
@@ -19,9 +22,12 @@ export class Item {
   nameSearch?: string;
 
   @Prop({ required: true })
+  basePrice: number;
+
+  @Prop({ required: true })
   price: number;
 
-  @Prop({ enum: ['food', 'drink'], required: true })
+  @Prop({ default: 'food' })
   type: 'food' | 'drink';
 
   @Prop()
@@ -32,6 +38,14 @@ export class Item {
 
   @Prop({ type: Types.ObjectId, ref: 'Image' })
   imageId?: any;
+
+  // Options will be stored in separate collection
+  // No embedded options field
+
+  // Thời gian chuẩn bị (phút)
+  @Prop({ default: 15 })
+  preparationTime: number;
+
 
   // Đánh giá và review
   @Prop({ default: 0, min: 0, max: 5 })

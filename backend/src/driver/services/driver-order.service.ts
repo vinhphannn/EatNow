@@ -1,8 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { Order } from '../../order/schemas/order.schema';
-import { OrderStatus } from '../../order/schemas/order.schema';
+import { Order, OrderStatus } from '../../order/schemas/order.schema';
 
 @Injectable()
 export class DriverOrderService {
@@ -30,7 +29,7 @@ export class DriverOrderService {
         .skip((page - 1) * limit)
         .limit(limit)
         .populate('restaurantId', 'name address')
-        .populate('userId', 'name phone')
+        .populate('customerId', 'name phone')
         .lean(),
       this.orderModel.countDocuments(query),
     ]);
@@ -47,6 +46,26 @@ export class DriverOrderService {
   }
 
   async updateOrderStatus(orderId: string, status: OrderStatus, driverId: string) {
+    // Validate allowed transitions for driver
+    // Driver can: accept, arrived-restaurant, picked-up, arrived-customer, delivered, cancel
+    const current = await this.orderModel.findById(orderId).lean();
+    if (!current) throw new NotFoundException('Order not found');
+    const from = (current.status as any) as OrderStatus;
+    const to = status;
+    const driverAllowed: Record<OrderStatus, OrderStatus[]> = {
+      [OrderStatus.PENDING]: [OrderStatus.PENDING],
+      [OrderStatus.CONFIRMED]: [OrderStatus.PREPARING], // arrived-restaurant
+      [OrderStatus.PREPARING]: [OrderStatus.READY],     // picked-up
+      [OrderStatus.READY]: [OrderStatus.DELIVERED],     // arrived-customer -> delivered via flow
+      [OrderStatus.DELIVERED]: [OrderStatus.DELIVERED],
+      [OrderStatus.CANCELLED]: [OrderStatus.CANCELLED],
+    } as any;
+    if (!driverAllowed[from] || !driverAllowed[from].includes(to)) {
+      const e: any = new Error(`Invalid driver transition: ${from} -> ${to}`);
+      e.status = 400;
+      throw e;
+    }
+
     const updateData: any = { status };
     
     if (driverId) {
@@ -73,7 +92,7 @@ export class DriverOrderService {
       { new: true }
     ).populate('driverId', 'name phone')
      .populate('restaurantId', 'name address')
-     .populate('userId', 'name phone');
+     .populate('customerId', 'name phone');
 
     if (!updatedOrder) {
       throw new NotFoundException('Order not found');
@@ -87,7 +106,7 @@ export class DriverOrderService {
     const order = await this.orderModel.findById(orderId)
       .populate('driverId', 'name phone')
       .populate('restaurantId', 'name address')
-      .populate('userId', 'name phone');
+      .populate('customerId', 'name phone');
 
     if (!order) {
       throw new NotFoundException('Order not found');

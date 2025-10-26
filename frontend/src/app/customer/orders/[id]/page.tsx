@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useToast } from '../../../../components';
+import { OrderChat } from '../../../../components';
 import { useOrder } from '../../../../hooks/useApi';
 
 // Client-side rendering for sensitive order data
@@ -49,7 +50,7 @@ interface Order {
 export default function OrderDetailPage() {
   const router = useRouter();
   const params = useParams();
-  const { showToast, ToastContainer } = useToast();
+  const { showToast } = useToast();
 
   // Get token from localStorage
   const [token, setToken] = useState<string | null>(null);
@@ -141,6 +142,40 @@ export default function OrderDetailPage() {
       cancelled: 'Đơn hàng đã bị hủy'
     };
     return descriptions[status as keyof typeof descriptions] || '';
+  };
+
+  const canCancel = order && (order.status === 'pending' || order.status === 'confirmed');
+  const [cancelling, setCancelling] = useState(false);
+
+  const handleCancel = async () => {
+    if (!orderId || !token) return;
+    if (!canCancel) {
+      showToast('Chỉ có thể hủy khi đơn chưa chuẩn bị hoặc chưa xác nhận', 'info');
+      return;
+    }
+    setCancelling(true);
+    try {
+      const api = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const res = await fetch(`${api}/orders/${orderId}/cancel`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const msg = data?.message || 'Không thể hủy đơn hàng';
+        showToast(msg, 'error');
+      } else {
+        showToast('Đã hủy đơn hàng', 'success');
+        await refetch();
+      }
+    } catch (e: any) {
+      showToast(e?.message || 'Không thể hủy đơn hàng', 'error');
+    } finally {
+      setCancelling(false);
+    }
   };
 
   if (loading || !orderId) {
@@ -323,12 +358,24 @@ export default function OrderDetailPage() {
                     <span>{new Date(order.createdAt).toLocaleString('vi-VN')}</span>
                   </div>
                 </div>
+
+                {canCancel && (
+                  <button
+                    onClick={handleCancel}
+                    disabled={cancelling}
+                    className="mt-6 w-full bg-red-500 hover:bg-red-600 disabled:opacity-60 text-white px-4 py-3 rounded-lg font-medium transition-colors"
+                  >
+                    {cancelling ? 'Đang hủy...' : 'Hủy đơn hàng'}
+                  </button>
+                )}
               </div>
+
+              {/* Chat with Driver */}
+              <OrderChat orderId={orderId!} token={token!} role={'customer'} />
             </div>
           </div>
         </div>
       </div>
-      <ToastContainer />
     </main>
   );
 }

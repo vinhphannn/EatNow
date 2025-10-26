@@ -10,6 +10,10 @@ export class DistanceService {
    * @param lon2 Longitude of second point
    * @returns Distance in meters
    */
+  calculateHaversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    return this.calculateDistance(lat1, lon1, lat2, lon2);
+  }
+
   calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
     const R = 6371e3; // Earth's radius in meters
     const φ1 = (lat1 * Math.PI) / 180; // φ, λ in radians
@@ -52,9 +56,27 @@ export class DistanceService {
    * @returns Estimated time in minutes
    */
   calculateEstimatedDeliveryTime(distanceKm: number): number {
-    // Average speed: 25 km/h in city
-    const averageSpeedKmh = 25;
-    const timeHours = distanceKm / averageSpeedKmh;
-    return Math.ceil(timeHours * 60); // Convert to minutes and round up
+    // Average speed: 30 km/h in city (updated to match frontend)
+    const averageSpeedKmh = 30;
+    const preparationTime = 10; // Preparation time in minutes
+    const travelTime = Math.round((distanceKm / averageSpeedKmh) * 60);
+    return travelTime + preparationTime;
+  }
+
+  /**
+   * Calculate delivery fee based on distance
+   * @param distanceKm Distance in kilometers
+   * @returns Delivery fee in VND
+   */
+  calculateDeliveryFee(distanceKm: number): number {
+    const baseFee = 15000; // Base fee for first 4km
+    const perKmFee = 5000; // Fee per km after 4km
+    
+    if (distanceKm <= 4) {
+      return baseFee;
+    }
+    
+    const extraKm = Math.ceil(distanceKm - 4);
+    return baseFee + (extraKm * perKmFee);
   }
 }

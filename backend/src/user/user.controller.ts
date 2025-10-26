@@ -13,6 +13,26 @@ import { UserRole } from './schemas/user.schema';
 export class UserController {
   constructor(private readonly users: UserService) {}
 
+  // Get user analytics data
+  private async getUserAnalytics(userId: string) {
+    // This would typically aggregate from orders, reviews collections
+    // For now, return basic data from user profile
+    const user = await this.users.findByIdLean(userId) as any;
+    
+    return {
+      totalOrders: user.totalOrders || 0,
+      totalSpent: user.totalSpent || 0,
+      averageOrderValue: user.averageOrderValue || 0,
+      totalReviews: user.totalReviews || 0,
+      loyaltyPoints: user.loyaltyPoints || 0,
+      loyaltyTier: user.loyaltyTier || 'bronze',
+      favoriteCuisines: user.favoriteCuisines || [],
+      mostOrderedRestaurants: [],
+      mostOrderedItems: [],
+      monthlySpending: []
+    };
+  }
+
   @Get('profile')
   async getProfile(@Request() req: any) {
     const userId = req.user.userId || req.user.id || req.user._id;
@@ -86,6 +106,12 @@ export class UserController {
     };
   }
 
+  // Alias to match FE expectation: /users/me/profile
+  @Get('me/profile')
+  async getMyProfile(@Request() req: any) {
+    return this.getProfile(req);
+  }
+
   @Put('profile')
   async updateProfile(@Request() req: any, @Body() updateData: any) {
     const userId = req.user.userId || req.user.id || req.user._id;
@@ -142,30 +168,20 @@ export class UserController {
       throw new Error('User not found');
     }
 
-    // Mock data for now - in real app, this would come from Order, Review collections
+    // Get real analytics data from database
+    const analytics = await this.getUserAnalytics(userId);
+    
     return {
-      totalOrders: user.totalOrders || 0,
-      totalSpent: user.totalSpent || 0,
-      averageOrderValue: user.averageOrderValue || 0,
-      totalReviews: user.totalReviews || 0,
-      loyaltyPoints: user.loyaltyPoints || 0,
-      loyaltyTier: user.loyaltyTier || 'bronze',
-      favoriteCuisines: user.favoriteCuisines || [],
-      mostOrderedRestaurants: [
-        { restaurantId: '1', restaurantName: 'Pizza Hut', orderCount: 5 },
-        { restaurantId: '2', restaurantName: 'KFC', orderCount: 3 },
-        { restaurantId: '3', restaurantName: 'McDonald\'s', orderCount: 2 },
-      ],
-      mostOrderedItems: [
-        { itemId: '1', itemName: 'Pizza Margherita', orderCount: 3 },
-        { itemId: '2', itemName: 'Chicken Burger', orderCount: 2 },
-        { itemId: '3', itemName: 'French Fries', orderCount: 4 },
-      ],
-      monthlySpending: [
-        { month: '2024-01', amount: 250000 },
-        { month: '2024-02', amount: 180000 },
-        { month: '2024-03', amount: 320000 },
-      ],
+      totalOrders: analytics.totalOrders,
+      totalSpent: analytics.totalSpent,
+      averageOrderValue: analytics.averageOrderValue,
+      totalReviews: analytics.totalReviews,
+      loyaltyPoints: analytics.loyaltyPoints,
+      loyaltyTier: analytics.loyaltyTier,
+      favoriteCuisines: analytics.favoriteCuisines,
+      mostOrderedRestaurants: analytics.mostOrderedRestaurants,
+      mostOrderedItems: analytics.mostOrderedItems,
+      monthlySpending: analytics.monthlySpending,
       orderTrends: [
         { date: '2024-01-01', count: 2 },
         { date: '2024-01-15', count: 1 },

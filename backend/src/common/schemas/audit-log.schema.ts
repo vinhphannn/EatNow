@@ -81,13 +81,13 @@ export class AuditLog {
   @Prop({ required: true })
   description: string;
 
-  @Prop()
+  @Prop({ type: Object })
   details?: Record<string, any>; // Additional details about the action
 
-  @Prop()
+  @Prop({ type: Object })
   oldValues?: Record<string, any>; // Previous values (for updates)
 
-  @Prop()
+  @Prop({ type: Object })
   newValues?: Record<string, any>; // New values (for updates)
 
   @Prop()
@@ -130,7 +130,7 @@ export class AuditLog {
   @Prop()
   requestId?: string; // Request ID for tracing
 
-  @Prop()
+  @Prop({ type: Object })
   metadata?: Record<string, any>;
 
   @Prop({ default: true })

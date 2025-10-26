@@ -29,8 +29,6 @@ export class CustomerService {
       // Create customer profile
       const customer = new this.customerModel({
         userId: new Types.ObjectId(userId),
-        name: user.name,
-        email: user.email,
         ...customerData,
       });
 
@@ -43,10 +41,26 @@ export class CustomerService {
   // Get customer by user ID
   async getCustomerByUserId(userId: string): Promise<Customer> {
     try {
-      const customer = await this.customerModel
+      console.log('🔍 CustomerService: Looking for customer with userId:', userId);
+      
+      // Try both ObjectId and string formats
+      let customer = await this.customerModel
         .findOne({ userId: new Types.ObjectId(userId) })
         .populate('userId', 'email name role')
         .lean();
+
+      if (!customer) {
+        // If not found with ObjectId, try with string
+        customer = await this.customerModel
+          .findOne({ userId: userId })
+          .populate('userId', 'email name role')
+          .lean();
+      }
+
+      console.log('🔍 CustomerService: Found customer:', !!customer);
+      if (customer) {
+        console.log('🔍 CustomerService: Customer _id:', customer._id);
+      }
 
       if (!customer) {
         throw new NotFoundException('Customer profile not found');
@@ -54,6 +68,7 @@ export class CustomerService {
 
       return customer;
     } catch (error) {
+      console.log('🔍 CustomerService: Error:', error);
       throw error;
     }
   }
@@ -336,8 +351,8 @@ export class CustomerService {
   async getAllCustomers(limit: number = 10, skip: number = 0): Promise<Customer[]> {
     try {
       return await this.customerModel
-        .find({ isDeleted: false })
-        .populate('userId', 'email name role')
+        .find({}) // Bỏ filter isDeleted vì trường này đã chuyển về User schema
+        .populate('userId', 'email name role isDeleted deletedAt isActive')
         .sort({ createdAt: -1 })
         .limit(limit)
         .skip(skip)
@@ -355,11 +370,14 @@ export class CustomerService {
         throw new NotFoundException('Customer profile not found');
       }
 
-      customer.isDeleted = true;
-      customer.deletedAt = new Date();
-      customer.isActive = false;
+      // Cập nhật trạng thái xóa trong User schema thay vì Customer schema
+      await this.users.setById(userId, {
+        isDeleted: true,
+        deletedAt: new Date(),
+        isActive: false
+      });
 
-      return await customer.save();
+      return customer;
     } catch (error) {
       throw error;
     }

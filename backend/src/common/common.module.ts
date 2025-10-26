@@ -13,6 +13,7 @@ import { GlobalCategoryController } from './controllers/global-category.controll
 import { ReviewController } from './controllers/review.controller';
 import { FavoriteController } from './controllers/favorite.controller';
 import { DistanceService } from './services/distance.service';
+import { RedisService } from './services/redis.service';
 
 @Module({
   imports: [
@@ -26,7 +27,7 @@ import { DistanceService } from './services/distance.service';
     ]),
   ],
   controllers: [ImageController, PromotionController, GlobalCategoryController, ReviewController, FavoriteController],
-  providers: [ImageService, DistanceService],
-  exports: [ImageService, DistanceService],
+  providers: [ImageService, DistanceService, RedisService],
+  exports: [ImageService, DistanceService, RedisService],
 })
 export class CommonModule {}

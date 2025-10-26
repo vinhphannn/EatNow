@@ -2,6 +2,7 @@ import { User, UserRole, AuthTokens, LoginCredentials, Permission, ROLE_PERMISSI
 
 class AuthService {
   private readonly STORAGE_KEYS = {
+    // Note: We're using cookie-based auth now, so these are just for fallback
     ACCESS_TOKEN: 'eatnow_token',
     REFRESH_TOKEN: 'eatnow_refresh_token',
     USER_DATA: 'eatnow_user_data',
@@ -32,6 +33,9 @@ class AuthService {
            }
 
       // Map API response to our User interface
+      console.log('🔍 Login response:', response);
+      console.log('🔍 User role from API:', response.user.role);
+      
       const user: User = {
         id: response.user.id,
         email: response.user.email,
@@ -43,9 +47,31 @@ class AuthService {
         createdAt: response.user.createdAt || new Date().toISOString(),
         updatedAt: response.user.updatedAt || new Date().toISOString(),
       };
+      
+      console.log('🔍 Mapped user:', user);
+      console.log('🔍 UserRole.DRIVER:', UserRole.DRIVER);
+      console.log('🔍 Is driver?', user.role === UserRole.DRIVER);
 
       // Cookie-based: do not manage tokens in localStorage
       this.setUser(user);
+
+      // Ensure role cookie is set for middleware-based guards
+      if (typeof document !== 'undefined') {
+        try {
+          // Set a lightweight role-specific cookie so middleware can detect access
+          // Note: Server should ideally set this HttpOnly cookie. This is a fallback.
+          const roleCookies = {
+            [UserRole.CUSTOMER]: 'customer_token',
+            [UserRole.RESTAURANT]: 'restaurant_token',
+            [UserRole.DRIVER]: 'driver_token',
+            [UserRole.ADMIN]: 'admin_token'
+          };
+          
+          if (roleCookies[user.role]) {
+            document.cookie = `${roleCookies[user.role]}=1; path=/; SameSite=Lax; max-age=${60 * 60}`; // 1 hour
+          }
+        } catch {}
+      }
       return { user };
     } catch (error) {
       console.error('Login error:', error);

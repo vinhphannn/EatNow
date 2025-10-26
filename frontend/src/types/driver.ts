@@ -62,13 +62,12 @@ export interface DriverDashboardStats {
 }
 
 export type DriverOrderStatus =
-  | 'waiting'
-  | 'assigned'
-  | 'accepted'
-  | 'picking'
-  | 'delivering'
-  | 'completed'
-  | 'rejected';
+  | 'picking_up'           // Tài xế đã nhận đơn và đang đến lấy hàng
+  | 'arrived_at_restaurant' // Tài xế đã đến nhà hàng
+  | 'picked_up'            // Tài xế đã lấy đơn hàng
+  | 'arrived_at_customer'  // Tài xế đã đến vị trí giao hàng
+  | 'delivered'            // Đơn hàng đã giao thành công
+  | 'cancelled';           // Đơn hàng đã bị hủy
 
 export interface DriverOrderItem {
   id: string;
@@ -144,6 +143,8 @@ export interface UpdateDriverLocationRequest {
 export interface UpdateDriverOrderStatusRequest {
   status: DriverOrderStatus;
   note?: string;
+  driverId?: string | null;
+  cancellationReason?: string;
 }
 
 

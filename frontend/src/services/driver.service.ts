@@ -50,9 +50,9 @@ class DriverService {
   }
 
   async updateMyLocation(payload: UpdateDriverLocationRequest): Promise<{ success: boolean } & Partial<DriverProfile>> {
-    // Align with backend: POST /driver/location/update with latitude/longitude
+    // Use new endpoint: POST /driver/orders/location
     const body = { latitude: payload.lat, longitude: payload.lng } as any;
-    return apiClient.post('/driver/location/update', body);
+    return apiClient.post('/driver/orders/location', body);
   }
 
   async setAvailability(isOnline: boolean): Promise<{ success: boolean; isOnline: boolean }> {
@@ -60,12 +60,8 @@ class DriverService {
   }
 
   async getMyOrders(params?: { status?: string; page?: number; limit?: number }): Promise<{ orders: DriverOrderSummary[]; pagination?: any } | DriverOrderSummary[]> {
-    // Align with backend singular prefix where applicable
-    try {
-      return await apiClient.get('/driver/orders', { params });
-    } catch (e) {
-      return await apiClient.get('/drivers/me/orders', { params });
-    }
+    // Get current orders for driver (incomplete orders)
+    return await apiClient.get('/drivers/me/current-orders', { params });
   }
 
   async getOrderById(orderId: string): Promise<DriverOrderSummary> {
@@ -76,17 +72,46 @@ class DriverService {
     }
   }
 
-  async acceptOrder(orderId: string): Promise<DriverOrderSummary> {
-    return apiClient.post<DriverOrderSummary>(`/driver/orders/${orderId}/accept`);
+  async acceptOrder(orderId: string, estimatedArrivalTime?: number): Promise<DriverOrderSummary> {
+    return apiClient.post<DriverOrderSummary>('/driver/orders/accept', { 
+      orderId, 
+      estimatedArrivalTime 
+    });
   }
 
-  async rejectOrder(orderId: string, note?: string): Promise<DriverOrderSummary> {
-    return apiClient.post<DriverOrderSummary>(`/driver/orders/${orderId}/reject`, { note });
+  async rejectOrder(orderId: string, reason?: string): Promise<DriverOrderSummary> {
+    return apiClient.post<DriverOrderSummary>('/driver/orders/reject', { 
+      orderId, 
+      reason 
+    });
+  }
+
+  async completeOrder(orderId: string, actualDeliveryTime?: Date, customerRating?: number, notes?: string): Promise<DriverOrderSummary> {
+    return apiClient.post<DriverOrderSummary>('/driver/orders/complete', {
+      orderId,
+      actualDeliveryTime,
+      customerRating,
+      notes
+    });
+  }
+
+  async getDriverHistory(page = 1, limit = 20): Promise<{
+    orders: DriverOrderSummary[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  }> {
+    return apiClient.get(`/driver/orders/assignment/history?page=${page}&limit=${limit}`);
   }
 
   async updateOrderStatus(orderId: string, payload: UpdateDriverOrderStatusRequest): Promise<DriverOrderSummary> {
-    // Map some common transitions to explicit endpoints if needed
-    return apiClient.post<DriverOrderSummary>(`/driver/orders/${orderId}/status`, payload as any);
+    return apiClient.post<DriverOrderSummary>('/driver/orders/assignment/update-status', {
+      orderId,
+      ...payload
+    });
   }
 
   async arrivedAtRestaurant(orderId: string) {

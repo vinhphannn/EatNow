@@ -4,7 +4,7 @@ import { Model } from 'mongoose';
 import { Driver, DriverDocument } from '../schemas/driver.schema';
 import { Order, OrderDocument } from '../../order/schemas/order.schema';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { NotificationGateway } from '../../notification/notification.gateway';
+import { OptimizedNotificationGateway } from '../../notification/optimized-notification.gateway';
 
 @Injectable()
 export class DriverLocationService {
@@ -13,7 +13,7 @@ export class DriverLocationService {
   constructor(
     @InjectModel(Driver.name) private driverModel: Model<DriverDocument>,
     @InjectModel(Order.name) private orderModel: Model<OrderDocument>,
-    private notificationGateway: NotificationGateway,
+    private notificationGateway: OptimizedNotificationGateway,
   ) {}
 
   /**

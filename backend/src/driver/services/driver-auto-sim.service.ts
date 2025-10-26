@@ -101,7 +101,10 @@ export class DriverAutoSimService {
             this.logger.log(`Auto-assigned order ${pending._id} to driver ${driverId}`);
           }
         } else {
-          // Progress order statuses over time
+          // DISABLED: Progress order statuses over time
+          // This was causing orders to automatically change status and complete
+          // Commented out to prevent automatic order status changes
+          /*
           if (existing.status === 'confirmed' && Math.random() < 0.3) {
             await this.orderModel.findByIdAndUpdate(existing._id, {
               status: 'preparing',
@@ -119,6 +122,7 @@ export class DriverAutoSimService {
               $push: { trackingHistory: { status: 'delivered', timestamp: new Date(), updatedBy: 'system' } }
             });
           }
+          */
         }
       } catch (e) {
         this.logger.error('Auto-sim tick error', e as any);

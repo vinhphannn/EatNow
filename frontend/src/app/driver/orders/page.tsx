@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAvailableOrders } from "@/hooks/useAvailableOrders";
 import { useMyActiveOrders } from "@/hooks/useMyActiveOrders";
 import { useSocketDriver } from "@/hooks/useSocketDriver";
-import { ordersService } from "@/services/orders.service";
+import { driverService } from "@/services/driver.service";
 import { useDriverAuth } from "@/contexts/AuthContext";
 
 export default function DriverOrdersTestPage() {
@@ -24,7 +24,7 @@ export default function DriverOrdersTestPage() {
   const acceptOrder = async (orderId: string) => {
     setBusyId(orderId);
     try {
-      await ordersService.acceptOrder(orderId);
+      await driverService.acceptOrder(orderId);
       queryClient.invalidateQueries({ queryKey: ['availableOrders'] });
       queryClient.invalidateQueries({ queryKey: ['driverActiveOrders'] });
     } catch (e: any) {
@@ -34,10 +34,23 @@ export default function DriverOrdersTestPage() {
     }
   };
 
+  const rejectOrder = async (orderId: string) => {
+    setBusyId(orderId);
+    try {
+      await driverService.rejectOrder(orderId, 'Từ chối đơn hàng');
+      queryClient.invalidateQueries({ queryKey: ['availableOrders'] });
+      queryClient.invalidateQueries({ queryKey: ['driverActiveOrders'] });
+    } catch (e: any) {
+      alert(e?.message || 'Không thể từ chối đơn');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const completeOrder = async (orderId: string) => {
     setBusyId(orderId);
     try {
-      await ordersService.completeOrder(orderId);
+      await driverService.completeOrder(orderId);
       queryClient.invalidateQueries({ queryKey: ['driverActiveOrders'] });
       queryClient.invalidateQueries({ queryKey: ['availableOrders'] });
     } catch (e: any) {
@@ -74,13 +87,22 @@ export default function DriverOrdersTestPage() {
                       <div className="font-medium text-gray-900">#{String(o.id || o._id).slice(-6).toUpperCase()}</div>
                       <div className="text-xs text-gray-500">Tổng: ₫{Number(o.total||0).toLocaleString('vi-VN')} • Ship: ₫{Number(o.deliveryFee||0).toLocaleString('vi-VN')}</div>
                     </div>
-                    <button
-                      onClick={() => acceptOrder(o.id || o._id)}
-                      disabled={busyId === (o.id || o._id)}
-                      className="px-3 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-60"
-                    >
-                      {busyId === (o.id || o._id) ? 'Đang nhận...' : 'Nhận đơn'}
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => acceptOrder(o.id || o._id)}
+                        disabled={busyId === (o.id || o._id)}
+                        className="px-3 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-60"
+                      >
+                        {busyId === (o.id || o._id) ? 'Đang nhận...' : 'Nhận đơn'}
+                      </button>
+                      <button
+                        onClick={() => rejectOrder(o.id || o._id)}
+                        disabled={busyId === (o.id || o._id)}
+                        className="px-3 py-2 rounded-md bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-60"
+                      >
+                        Từ chối
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

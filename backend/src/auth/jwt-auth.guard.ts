@@ -15,8 +15,22 @@ export class JwtAuthGuard implements CanActivate {
     if (auth && auth.startsWith('Bearer ')) {
       token = auth.substring(7);
     } else {
-      // Fallback to HttpOnly cookie
-      token = req.cookies?.['access_token'];
+      // Fallback to HttpOnly cookies - check role-specific cookies first
+      const cookies = req.cookies || {};
+      
+      // Check role-specific cookies
+      for (const role of ['customer', 'restaurant', 'driver', 'admin']) {
+        const cookieName = `${role}_access_token`;
+        if (cookies[cookieName]) {
+          token = cookies[cookieName];
+          break;
+        }
+      }
+      
+      // Fallback to generic access_token
+      if (!token) {
+        token = cookies['access_token'];
+      }
     }
 
     if (!token) throw new UnauthorizedException('Missing token');

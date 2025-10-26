@@ -4,10 +4,12 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/components/Toast';
 
 export default function CustomerLoginPage() {
   const router = useRouter();
   const { login } = useAuth();
+  const { showToast } = useToast();
   const [formData, setFormData] = useState({
     email: '',
     password: ''
@@ -39,14 +41,18 @@ export default function CustomerLoginPage() {
         
         // Redirect to home page after successful login
         console.log('🔍 Login: Redirecting to /customer/home');
+        showToast('Đăng nhập thành công', 'success');
         window.location.href = '/customer/home';
       } else {
         const errorData = await response.json();
-        setError(errorData.message || 'Đăng nhập thất bại');
+        const msg = errorData.message || 'Đăng nhập thất bại';
+        setError(msg);
+        showToast(msg, 'error');
       }
     } catch (error) {
       console.error('Login error:', error);
       setError('Có lỗi xảy ra khi đăng nhập');
+      showToast('Có lỗi xảy ra khi đăng nhập', 'error');
     } finally {
       setLoading(false);
     }

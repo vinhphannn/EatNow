@@ -36,6 +36,12 @@ export function AuthGuard({
 
     // Check role requirement
     if (requiredRole && !hasRole(requiredRole)) {
+      console.log('🚫 Role check failed:', {
+        requiredRole,
+        userRole: user?.role,
+        hasRoleResult: hasRole(requiredRole),
+        user: user
+      });
       router.replace('/unauthorized');
       return;
     }

@@ -51,6 +51,7 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
   private redisKV: any = null;
   private cachedActiveOrdersCount: number | null = null;
   private cachedActiveOrdersAt = 0;
+  private chatBuffers = new Map<string, Array<{ senderType: 'customer' | 'driver' | 'restaurant'; senderId: string; message: string; at: string }>>();
 
   constructor(
     private readonly jwtService: JwtService,
@@ -272,6 +273,13 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
         } catch {}
       }).catch(() => {});
     }
+    // Send recent chat history (last 20)
+    try {
+      const history = (this.chatBuffers.get(orderId) || []).slice(-20);
+      if (history.length) {
+        client.emit('order_chat_history:v1', { orderId, messages: history });
+      }
+    } catch {}
   }
 
   @SubscribeMessage('leave_order')
@@ -460,6 +468,25 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
       this.redisKV.setex(orderKey, ttlSec, json).catch(() => {});
       this.redisKV.setex(driverKey, ttlSec, json).catch(() => {});
     }
+  }
+
+  /**
+   * Real-time order chat between customer and driver (and restaurant)
+   */
+  @SubscribeMessage('order_chat_send')
+  handleOrderChatSend(client: Socket, payload: { orderId: string; message: string }) {
+    const orderId = (payload as any)?.orderId;
+    const text = String((payload as any)?.message || '').trim();
+    if (!orderId || !text) return;
+    const role = (client as any).role as string | undefined;
+    const userId = String((client as any).userId || '');
+    const senderType: 'customer' | 'driver' | 'restaurant' = role === 'driver' ? 'driver' : (role === 'restaurant' || role === 'owner' || role === 'admin_restaurant') ? 'restaurant' : 'customer';
+    const msg = { senderType, senderId: userId, message: text, at: new Date().toISOString() };
+    const buf = this.chatBuffers.get(orderId) || [];
+    buf.push(msg);
+    if (buf.length > 200) buf.shift();
+    this.chatBuffers.set(orderId, buf);
+    this.server.to(`order:${orderId}`).emit('order_chat_message:v1', { orderId, ...msg });
   }
 
   private haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {

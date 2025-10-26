@@ -22,13 +22,13 @@ export class User {
   name: string;
 
   @Prop({ trim: true })
-  fullName?: string;
-
-  @Prop({ trim: true })
   phone?: string;
 
   @Prop({ enum: UserRole, required: true })
   role: UserRole;
+
+  @Prop({ type: Types.ObjectId, ref: 'Restaurant' })
+  restaurantId?: Types.ObjectId;
 
   @Prop({ type: String })
   avatarUrl?: string;

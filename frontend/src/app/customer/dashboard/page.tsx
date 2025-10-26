@@ -245,7 +245,7 @@ export default function CustomerDashboardPage() {
                   </Link>
                   
                   <Link
-                    href="/customer/cart"
+                    href="/customer/home"
                     className="flex items-center p-4 bg-white border border-gray-200 rounded-xl hover:shadow-md transition-all"
                   >
                     <span className="text-2xl mr-3">🛒</span>

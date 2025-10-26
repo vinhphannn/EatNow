@@ -2,11 +2,14 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { CustomerGuard } from "@/components/guards/AuthGuard";
+import { useToast } from "@/components";
 import { useCustomerAuth } from "@/contexts/AuthContext";
+import { useDeliveryAddress } from "@/contexts/DeliveryAddressContext";
 import { useRestaurants } from "@/hooks/useRestaurants";
-import { useAllItems } from "@/hooks/useItems";
 import { usePublicCategories } from "@/hooks/useCategories";
+import { useFeaturedCollections } from "@/hooks/useFeaturedCollections";
 import { cartService } from "@/services/cart.service";
 import { apiClient } from "@/services/api.client";
 import useEmblaCarousel from "embla-carousel-react";
@@ -22,17 +25,189 @@ import {
   faLocationDot,
   faUtensils,
   faArrowRight,
-  faStore
+  faStore,
+  faHouse,
+  faList,
+  faUser,
+  faBowlRice,
+  faBreadSlice,
+  faPizzaSlice,
+  faBurger,
+  faCoffee,
+  faIceCream,
+  faCookie,
+  faCake,
+  faCarrot,
+  faFish,
+  faDrumstickBite,
+  faEgg,
+  faCheese,
+  faGlassWater,
+  faWineGlass,
+  faBeer,
+  faMugHot,
+  faLeaf,
+  faSeedling,
+  faPepperHot,
+  faLemon,
+  faGift,
+  faHeart,
+  faFire,
+  faSnowflake,
+  faSun,
+  faMoon,
+  faCloud,
+  faUmbrella,
+  faTree,
+  faGem,
+  faCrown,
+  faCircle,
+  faSquare,
+  faDiamond,
+  faSpinner,
+  faMagic,
+  faRocket,
+  faPlane,
+  faCar,
+  faBicycle,
+  faShip,
+  faTrain,
+  faBus,
+  faMotorcycle,
+  faHelicopter,
+  faSubway,
+  faTaxi,
+  faTractor,
+  faTruckPickup,
+  faTruckMonster,
+  faTruckMoving,
+  faTruckLoading,
+  faTruckFast,
+  faTruckField,
+  faTruckFieldUn,
+  faTruckFront,
+  faTruckMedical,
+  faTruckRampBox,
+  faTruckDroplet,
+  faTruckArrowRight,
+  faTruckPlane
 } from "@fortawesome/free-solid-svg-icons";
 import { faTwitter, faFacebook, faInstagram } from "@fortawesome/free-brands-svg-icons";
 
 function CustomerHomeContent() {
   const { user } = useCustomerAuth();
+  const { showToast } = useToast();
+  const { addressLabel, setAddressLabel, userLocation, setUserLocation } = useDeliveryAddress();
+  const pathname = usePathname();
+  
+  // Reverse geocoding function
+  const getAddressFromCoordinates = async (lat: number, lng: number): Promise<string> => {
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`
+      );
+      const data = await response.json();
+      
+      if (data && data.display_name) {
+        // Format address for Vietnam
+        const address = data.display_name
+          .split(',')
+          .map((part: string) => part.trim())
+          .filter((part: string) => part.length > 0)
+          .slice(0, -3) // Remove country, continent
+          .join(', ');
+        
+        return address;
+      }
+      return '';
+    } catch (error) {
+      console.error('Reverse geocoding error:', error);
+      return '';
+    }
+  };
+
+  // Icon mapping function
+  const getIconComponent = (iconString: string) => {
+    if (!iconString) return faUtensils;
+    
+    // Remove "solid:" prefix if present
+    const cleanIcon = iconString.replace('solid:', '');
+    
+    // Map icon strings to FontAwesome icons
+    const iconMap: { [key: string]: any } = {
+      'faBowlRice': faBowlRice,
+      'faBreadSlice': faBreadSlice,
+      'faPizzaSlice': faPizzaSlice,
+      'faBurger': faBurger,
+      'faCoffee': faCoffee,
+      'faIceCream': faIceCream,
+      'faCookie': faCookie,
+      'faCake': faCake,
+      'faCarrot': faCarrot,
+      'faFish': faFish,
+      'faDrumstickBite': faDrumstickBite,
+      'faEgg': faEgg,
+      'faCheese': faCheese,
+      'faGlassWater': faGlassWater,
+      'faWineGlass': faWineGlass,
+      'faBeer': faBeer,
+      'faMugHot': faMugHot,
+      'faLeaf': faLeaf,
+      'faSeedling': faSeedling,
+      'faPepperHot': faPepperHot,
+      'faLemon': faLemon,
+      'faGift': faGift,
+      'faHeart': faHeart,
+      'faFire': faFire,
+      'faSnowflake': faSnowflake,
+      'faSun': faSun,
+      'faMoon': faMoon,
+      'faCloud': faCloud,
+      'faUmbrella': faUmbrella,
+      'faTree': faTree,
+      'faGem': faGem,
+      'faCrown': faCrown,
+      'faStar': faStar,
+      'faCircle': faCircle,
+      'faSquare': faSquare,
+      'faDiamond': faDiamond,
+      'faSpinner': faSpinner,
+      'faMagic': faMagic,
+      'faRocket': faRocket,
+      'faPlane': faPlane,
+      'faCar': faCar,
+      'faBicycle': faBicycle,
+      'faShip': faShip,
+      'faTrain': faTrain,
+      'faBus': faBus,
+      'faMotorcycle': faMotorcycle,
+      'faTruck': faTruck,
+      'faHelicopter': faHelicopter,
+      'faSubway': faSubway,
+      'faTaxi': faTaxi,
+      'faTractor': faTractor,
+      'faTruckPickup': faTruckPickup,
+      'faTruckMonster': faTruckMonster,
+      'faTruckMoving': faTruckMoving,
+      'faTruckLoading': faTruckLoading,
+      'faTruckFast': faTruckFast,
+      'faTruckField': faTruckField,
+      'faTruckFieldUn': faTruckFieldUn,
+      'faTruckFront': faTruckFront,
+      'faTruckMedical': faTruckMedical,
+      'faTruckRampBox': faTruckRampBox,
+      'faTruckDroplet': faTruckDroplet,
+      'faTruckArrowRight': faTruckArrowRight,
+      'faTruckPlane': faTruckPlane
+    };
+    
+    return iconMap[cleanIcon] || faUtensils;
+  };
   
   // Load data from backend
   const { data: restaurantsData, loading: restaurantsLoading, error: restaurantsError } = useRestaurants(6, 0);
-  const { data: allItems, loading: itemsLoading, error: itemsError } = useAllItems(8, 0);
   const { data: categories, loading: categoriesLoading, error: categoriesError } = usePublicCategories();
+  const { data: featuredCollections, loading: collectionsLoading, error: collectionsError } = useFeaturedCollections();
   
   // Debug logs removed
   
@@ -44,6 +219,83 @@ function CustomerHomeContent() {
   const [emblaRef, emblaApi] = useEmblaCarousel({ align: 'start', dragFree: true, containScroll: 'trimSnaps' });
   const scrollPrev = useCallback(() => emblaApi && emblaApi.scrollPrev(), [emblaApi]);
   const scrollNext = useCallback(() => emblaApi && emblaApi.scrollNext(), [emblaApi]);
+
+  // Embla for hero banner carousel
+  const [heroEmblaRef, heroEmblaApi] = useEmblaCarousel({ 
+    align: 'start', 
+    loop: true,
+    skipSnaps: false,
+    dragFree: false
+  });
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [scrollSnaps, setScrollSnaps] = useState<number[]>([]);
+
+  const scrollTo = useCallback((index: number) => heroEmblaApi && heroEmblaApi.scrollTo(index), [heroEmblaApi]);
+
+  const onInit = useCallback((emblaApi: any) => {
+    setScrollSnaps(emblaApi.scrollSnapList());
+  }, []);
+
+  const onSelect = useCallback((emblaApi: any) => {
+    setSelectedIndex(emblaApi.selectedScrollSnap());
+  }, []);
+
+  useEffect(() => {
+    if (!heroEmblaApi) return;
+    onInit(heroEmblaApi);
+    onSelect(heroEmblaApi);
+    heroEmblaApi.on('reInit', onInit);
+    heroEmblaApi.on('select', onSelect);
+  }, [heroEmblaApi, onInit, onSelect]);
+
+  // Get user location and set delivery address
+  useEffect(() => {
+    const getCurrentLocation = async () => {
+      if (navigator.geolocation) {
+        showToast('Đang lấy vị trí của bạn...', 'info');
+        navigator.geolocation.getCurrentPosition(
+          async (position) => {
+            const { latitude, longitude } = position.coords;
+            console.log('📍 User location:', latitude, longitude);
+            
+            setUserLocation({ latitude, longitude });
+            
+            // Auto-generate address from current location
+            const generatedAddress = await getAddressFromCoordinates(latitude, longitude);
+            if (generatedAddress) {
+              setAddressLabel(generatedAddress);
+              showToast('Đã lấy vị trí và cập nhật địa chỉ giao hàng', 'success');
+            } else {
+              setAddressLabel('Vị trí hiện tại');
+              showToast('Đã lấy vị trí, không thể tạo địa chỉ tự động', 'info');
+            }
+          },
+          (error) => {
+            console.error('Geolocation error:', error);
+            showToast('Không thể lấy vị trí. Sử dụng địa chỉ đã lưu.', 'error');
+            // Fallback to saved address
+            loadSavedAddress();
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 300000
+          }
+        );
+      } else {
+        showToast('Trình duyệt không hỗ trợ định vị. Sử dụng địa chỉ đã lưu.', 'error');
+        // Fallback to saved address
+        loadSavedAddress();
+      }
+    };
+
+    const loadSavedAddress = () => {
+      // Address is now managed by DeliveryAddressContext
+      // No need to load here as it's already loaded in the context
+    };
+
+    getCurrentLocation();
+  }, []);
 
   // Feature flag: static promotions disabled in production
   useEffect(() => {
@@ -71,102 +323,133 @@ function CustomerHomeContent() {
     }
   }, []);
 
-  const handleAddToCart = async (itemId: string) => {
+  const handleAddToCart = async (itemId: string, restaurantId: string) => {
     try {
       if (!user) {
         window.location.href = '/customer/login';
         return;
       }
       setAddingMap((m) => ({ ...m, [itemId]: true }));
-      await cartService.addToCart({ itemId, quantity: 1 }, 'cookie-auth');
+      await cartService.addToCart(restaurantId, { itemId, quantity: 1 }, 'cookie-auth');
       if (typeof window !== 'undefined') {
-        alert('Đã thêm vào giỏ hàng');
+        showToast('Đã thêm vào giỏ hàng', 'success');
       }
     } catch (error: any) {
       console.error('Add to cart failed:', error?.message || error);
-      alert('Không thể thêm vào giỏ. Vui lòng thử lại.');
+      showToast('Không thể thêm vào giỏ. Vui lòng thử lại.', 'error');
     } finally {
       setAddingMap((m) => ({ ...m, [itemId]: false }));
     }
   };
 
-  // Load restaurant info (name, rating) for visible items using real API data
-  useEffect(() => {
-    const loadRestaurantInfo = async () => {
-      try {
-        const items = Array.isArray(allItems) ? allItems.slice(0, 30) : [];
-        const ids = Array.from(new Set(items.map((i: any) => i.restaurantId).filter(Boolean)));
-        const missingIds = ids.filter((id) => !restaurantMap[id]);
-        if (missingIds.length === 0) return;
-
-        const results = await Promise.all(
-          missingIds.map(async (id) => {
-            try {
-              const data: any = await apiClient.get(`/api/v1/restaurants/${id}`);
-              return { id, name: data?.name || 'Nhà hàng', rating: data?.rating };
-            } catch (e) {
-              return { id, name: 'Nhà hàng', rating: undefined };
-            }
-          })
-        );
-
-        setRestaurantMap((prev) => {
-          const next = { ...prev } as Record<string, { id: string; name: string; rating?: number }>;
-          for (const r of results) {
-            next[r.id] = r;
-          }
-          return next;
-        });
-      } catch {}
-    };
-
-    loadRestaurantInfo();
-  }, [allItems, restaurantMap]);
+  // No items on home anymore; restaurant details loaded on their pages
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 pb-24">
       {/* Hero Section */}
-      <section className="relative bg-gradient-to-r from-orange-500 to-red-500 text-white py-20">
-        <div className="container mx-auto px-4">
-          <div className="text-center">
-            <h1 className="text-5xl font-bold mb-6">
-              Chào mừng đến với EatNow! 🍽️
-            </h1>
-            <p className="text-xl mb-8 max-w-2xl mx-auto">
-              Khám phá hàng ngàn món ăn ngon từ các nhà hàng uy tín, giao hàng nhanh chóng và tiện lợi
-            </p>
-            
-            {/* Search Bar */}
-            <div className="max-w-2xl mx-auto mb-8">
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Tìm món ăn, nhà hàng..."
-                  className="w-full px-4 py-3 pl-12 pr-4 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                />
-                <button className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                  <FontAwesomeIcon icon={faMagnifyingGlass} className="w-5 h-5" />
-                </button>
+      <section className="relative bg-gradient-to-r from-orange-500 to-red-500 text-white py-6 md:py-8 overflow-hidden">
+        <div className="container mx-auto px-3 max-w-11xl">
+          {/* Hero Banner with Carousel */}
+          <div className="relative">
+            {/* Main Banner Content */}
+            <div className="text-center mb-6">
+              <h1 className="text-3xl md:text-4xl font-bold mb-3">
+                Chào mừng đến với EatNow! 
+              </h1>
+              <p className="text-base md:text-lg opacity-90 max-w-2xl mx-auto">
+                Khám phá hàng ngàn món ăn ngon từ các nhà hàng uy tín
+              </p>
+            </div>
+
+            {/* Stats Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-3xl mx-auto mb-6">
+              <div className="bg-white bg-opacity-20 rounded-lg p-3 backdrop-blur-sm hover:bg-opacity-30 transition-all">
+                <div className="text-xl md:text-2xl font-bold">{restaurantsData?.total || '0'}+</div>
+                <div className="text-xs opacity-80">Nhà hàng</div>
+              </div>
+              <div className="bg-white bg-opacity-20 rounded-lg p-3 backdrop-blur-sm hover:bg-opacity-30 transition-all">
+                <div className="text-xl md:text-2xl font-bold">{restaurantsData?.total || '0'}+</div>
+                <div className="text-xs opacity-80">Lựa chọn</div>
+              </div>
+              <div className="bg-white bg-opacity-20 rounded-lg p-3 backdrop-blur-sm hover:bg-opacity-30 transition-all">
+                <div className="text-xl md:text-2xl font-bold">25-35'</div>
+                <div className="text-xs opacity-80">Giao hàng</div>
+              </div>
+              <div className="bg-white bg-opacity-20 rounded-lg p-3 backdrop-blur-sm hover:bg-opacity-30 transition-all">
+                <div className="text-xl md:text-2xl font-bold">4.8★</div>
+                <div className="text-xs opacity-80">Đánh giá</div>
               </div>
             </div>
-            
-            {/* Quick Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-2xl mx-auto">
-              <div className="bg-white bg-opacity-20 rounded-lg p-4 backdrop-blur-sm">
-                <div className="text-2xl font-bold">{restaurantsData?.total || '0'}+</div>
-                <div className="text-sm opacity-80">Nhà hàng</div>
+
+            {/* Promotional Banners Carousel */}
+            <div className="relative max-w-3xl mx-auto">
+              <div className="overflow-hidden" ref={heroEmblaRef}>
+                <div className="flex">
+                  {/* Suggested Restaurants Banner (replaces items banner) */}
+                  <div className="flex-shrink-0 w-full bg-white bg-opacity-10 rounded-2xl p-4 backdrop-blur-sm">
+                    <div className="text-center">
+                      <h3 className="text-lg font-bold mb-3">⭐ Gợi ý cho bạn</h3>
+                      <div className="space-y-2">
+                        {restaurantsData?.restaurants && restaurantsData.restaurants.slice(0, 3).map((r: any, idx: number) => (
+                          <div key={idx} className="flex items-center gap-3 text-sm">
+                            <div className="w-8 h-8 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
+                              <span className="text-lg">🏪</span>
+                            </div>
+                            <span className="truncate">{r.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Promotions Banner */}
+                  {promotions.length > 0 && promotions.slice(0, 2).map((promo) => (
+                    <div key={promo.id} className="flex-shrink-0 w-full bg-gradient-to-br from-yellow-400 to-orange-500 rounded-2xl p-4 relative overflow-hidden">
+                      <div className="relative z-10">
+                        <div className="text-center text-white">
+                          <div className="text-2xl font-bold mb-2">{promo.discount}</div>
+                          <h3 className="text-base font-semibold mb-2">{promo.title}</h3>
+                          <p className="text-xs opacity-90">{promo.description}</p>
+                          <div className="mt-3 bg-white bg-opacity-20 rounded-full px-3 py-1 text-xs font-medium">
+                            {promo.code}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="absolute top-0 right-0 w-16 h-16 bg-white bg-opacity-10 rounded-full -translate-y-8 translate-x-8"></div>
+                      <div className="absolute bottom-0 left-0 w-12 h-12 bg-white bg-opacity-10 rounded-full translate-y-6 -translate-x-6"></div>
+                    </div>
+                  ))}
+
+                  {/* Restaurant Highlights */}
+                  <div className="flex-shrink-0 w-full bg-white bg-opacity-10 rounded-2xl p-4 backdrop-blur-sm">
+                    <div className="text-center">
+                      <h3 className="text-lg font-bold mb-3">⭐ Nhà hàng nổi bật</h3>
+                      <div className="space-y-2">
+                        {restaurantsData?.restaurants && restaurantsData.restaurants.slice(0, 3).map((restaurant, idx) => (
+                          <div key={idx} className="flex items-center gap-3 text-sm">
+                            <div className="w-8 h-8 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
+                              <span className="text-lg">🏪</span>
+                            </div>
+                            <span className="truncate">{restaurant.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="bg-white bg-opacity-20 rounded-lg p-4 backdrop-blur-sm">
-                <div className="text-2xl font-bold">{allItems?.length || '0'}+</div>
-                <div className="text-sm opacity-80">Món ăn</div>
-              </div>
-              <div className="bg-white bg-opacity-20 rounded-lg p-4 backdrop-blur-sm">
-                <div className="text-2xl font-bold">25-35'</div>
-                <div className="text-sm opacity-80">Giao hàng</div>
-              </div>
-              <div className="bg-white bg-opacity-20 rounded-lg p-4 backdrop-blur-sm">
-                <div className="text-2xl font-bold">4.8★</div>
-                <div className="text-sm opacity-80">Đánh giá</div>
+
+              {/* Dots indicator */}
+              <div className="flex justify-center mt-4 space-x-2">
+                {scrollSnaps.map((_, index) => (
+                  <button
+                    key={index}
+                    className={`w-2 h-2 rounded-full transition-all ${
+                      index === selectedIndex ? 'bg-white' : 'bg-white bg-opacity-50'
+                    }`}
+                    onClick={() => scrollTo(index)}
+                  />
+                ))}
               </div>
             </div>
           </div>
@@ -175,11 +458,11 @@ function CustomerHomeContent() {
 
       {/* Categories Section */}
       <section className="py-16 bg-gray-50">
-        <div className="container mx-auto px-4">
+        <div className="container mx-auto px-3 max-w-7xl">
           <div className="flex items-center justify-between mb-12">
             <div className="text-center md:text-left">
               <h2 className="text-4xl font-bold text-gray-900 mb-2">Danh mục món ăn</h2>
-              <p className="text-xl text-gray-600">Kéo ngang hoặc dùng mũi tên để xem thêm</p>
+      
             </div>
             <Link href="/customer/restaurants" className="hidden md:inline-flex bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-xl hover:bg-gray-50">Xem tất cả</Link>
           </div>
@@ -216,7 +499,10 @@ function CustomerHomeContent() {
                       >
                         <div className="text-center">
                           <div className="w-16 h-16 mx-auto mb-4 bg-orange-100 rounded-full flex items-center justify-center group-hover:bg-orange-200 transition-colors">
-                            <span className="text-2xl">{category.icon || '🍽️'}</span>
+                            <FontAwesomeIcon 
+                              icon={getIconComponent(category.icon || '')} 
+                              className="text-2xl text-orange-600" 
+                            />
                           </div>
                           <h3 className="font-semibold text-gray-900 group-hover:text-orange-600 transition-colors">
                             {category.name}
@@ -232,29 +518,9 @@ function CustomerHomeContent() {
                     </Link>
                   </>
                 ) : (
-                  [
-                    { _id: '1', name: 'Món Việt', icon: '🍜' },
-                    { _id: '2', name: 'Pizza', icon: '🍕' },
-                    { _id: '3', name: 'Burger', icon: '🍔' },
-                    { _id: '4', name: 'Sushi', icon: '🍣' },
-                    { _id: '5', name: 'Trà sữa', icon: '🧋' },
-                    { _id: '6', name: 'Cà phê', icon: '☕' },
-                  ].map((category) => (
-                    <Link
-                      key={category._id}
-                      href={`/customer/restaurants?category=${encodeURIComponent(category.name)}`}
-                      className="min-w-[160px] group bg-white rounded-2xl p-6 shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 hover:border-orange-200"
-                    >
-                      <div className="text-center">
-                        <div className="w-16 h-16 mx-auto mb-4 bg-orange-100 rounded-full flex items-center justify-center group-hover:bg-orange-200 transition-colors">
-                          <span className="text-2xl">{category.icon}</span>
-                        </div>
-                        <h3 className="font-semibold text-gray-900 group-hover:text-orange-600 transition-colors">
-                          {category.name}
-                        </h3>
-                      </div>
-                    </Link>
-                  ))
+                  <div className="col-span-full text-center py-12">
+                    <div className="text-gray-400 text-lg">Chưa có danh mục nào</div>
+                  </div>
                 )}
               </div>
             </div>
@@ -271,97 +537,93 @@ function CustomerHomeContent() {
         </div>
       </section>
 
-      {/* Featured Items Section */}
-      <section className="py-16 bg-white">
-        <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between mb-12">
-            <div>
-              <h2 className="text-4xl font-bold text-gray-900 mb-2">Món ăn nổi bật</h2>
-              <p className="text-xl text-gray-600">Những món ăn được yêu thích nhất</p>
-            </div>
-            <Link
-              href="/customer/restaurants"
-              className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-xl font-semibold transition-colors flex items-center"
-            >
-              Xem tất cả
-              <FontAwesomeIcon icon={faArrowRight} className="w-5 h-5 ml-2" />
-            </Link>
-          </div>
-          
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {itemsLoading ? (
-              Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-pulse">
-                  <div className="h-48 bg-gray-200"></div>
-                  <div className="p-4">
-                    <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-                    <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-                  </div>
-                </div>
-              ))
-            ) : allItems && allItems.length > 0 ? (
-              allItems.slice(0, 30).map((item) => (
-                <div key={item._id || item.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-shadow">
-                  <div className="h-48 bg-gray-100 flex items-center justify-center">
-                      {item.imageUrl ? (
-                        <img
-                          src={item.imageUrl}
-                          alt={item.name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <FontAwesomeIcon icon={faUtensils} className="text-4xl text-gray-400" />
-                    )}
-                  </div>
-                  <div className="p-4">
-                    <h3 className="font-semibold text-gray-900 mb-2">{item.name}</h3>
-                    {/* Restaurant info from real API */}
-                    {item.restaurantId && (
-                      <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
-                        <Link
-                          href={`/customer/restaurants/${item.restaurantId}`}
-                          className="hover:text-orange-600 font-medium truncate"
-                        >
-                          {restaurantMap[item.restaurantId]?.name || 'Đang tải...'}
-                        </Link>
-                        {restaurantMap[item.restaurantId]?.rating !== undefined ? (
-                          <span className="flex items-center gap-1">
-                            <FontAwesomeIcon icon={faStar} className="text-yellow-500" />
-                            {restaurantMap[item.restaurantId]?.rating}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400">Chưa có đánh giá</span>
-                        )}
+      {/* Featured Collections Section */}
+      {featuredCollections && featuredCollections.length > 0 && (
+        <section className="py-16 bg-white">
+          <div className="container mx-auto px-3 max-w-7xl">
+            {featuredCollections.map((collection) => (
+              <div key={collection._id} className="mb-16 last:mb-0">
+                <div className="flex items-center justify-between mb-8">
+                  <div className="flex items-center gap-4">
+                    {collection.icon && (
+                      <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
+                        <FontAwesomeIcon 
+                          icon={getIconComponent(collection.icon)} 
+                          className="text-xl text-orange-600" 
+                        />
                       </div>
                     )}
-                    <p className="text-gray-600 text-sm mb-3 line-clamp-2">{item.description}</p>
-                    <div className="flex items-center justify-between">
-                      <span className="text-orange-600 font-bold text-lg">
-                        {item.price.toLocaleString('vi-VN')}đ
-                      </span>
-                      <button
-                        onClick={() => handleAddToCart(item._id || item.id || '')}
-                        disabled={addingMap[item._id || item.id || '']}
-                        className="bg-orange-500 hover:bg-orange-600 disabled:opacity-60 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                      >
-                        {addingMap[item._id || item.id || ''] ? 'Đang thêm...' : 'Thêm'}
-                      </button>
+                    <div>
+                      <h2 className="text-3xl font-bold text-gray-900 mb-1">{collection.name}</h2>
+                      {collection.subtitle && (
+                        <p className="text-lg text-gray-600">{collection.subtitle}</p>
+                      )}
                     </div>
                   </div>
+                  <Link 
+                    href="/customer/restaurants" 
+                    className="text-orange-600 font-medium hover:text-orange-700 flex items-center"
+                  >
+                    Xem tất cả
+                    <FontAwesomeIcon icon={faArrowRight} className="w-4 h-4 ml-1" />
+                  </Link>
                 </div>
-              ))
-            ) : (
-              <div className="col-span-full text-center py-12">
-                <div className="text-gray-400 text-lg">Chưa có món ăn nào</div>
-            </div>
-          )}
+                
+                {collection.description && (
+                  <p className="text-gray-600 mb-6 max-w-3xl">{collection.description}</p>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {collection.restaurants.map((restaurant) => (
+                    <Link
+                      key={restaurant._id}
+                      href={`/customer/restaurants/${restaurant._id}`}
+                      className="group bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-shadow"
+                      prefetch={false}
+                    >
+                      <div className="h-48 bg-gray-100 flex items-center justify-center">
+                        {restaurant.imageUrl ? (
+                          <img
+                            src={restaurant.imageUrl}
+                            alt={restaurant.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <FontAwesomeIcon icon={faStore} className="text-4xl text-gray-400" />
+                        )}
+                      </div>
+                      <div className="p-4">
+                        <h3 className="font-semibold text-gray-900 mb-2 group-hover:text-orange-600 transition-colors">
+                          {restaurant.name}
+                        </h3>
+                        {restaurant.description && (
+                          <p className="text-gray-600 text-sm mb-3 line-clamp-2">{restaurant.description}</p>
+                        )}
+                        <div className="flex items-center justify-between text-sm text-gray-500">
+                          <span className="flex items-center gap-1">
+                            <FontAwesomeIcon icon={faStar} className="text-yellow-500" /> 
+                            {restaurant.rating || '4.5'}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <FontAwesomeIcon icon={faTruck} /> 
+                            {restaurant.deliveryFee ? `${restaurant.deliveryFee.toLocaleString('vi-VN')}đ` : 'Miễn phí'}
+                          </span>
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
-      </section>
+        </section>
+      )}
+
+      {/* Featured Items Section removed per new spec: home shows restaurants, not items */}
 
       {/* Featured Restaurants Section */}
       <section className="py-16 bg-gray-50">
-        <div className="container mx-auto px-4">
+        <div className="container mx-auto px-3 max-w-7xl">
           <div className="flex items-center justify-between mb-12">
             <div>
               <h2 className="text-4xl font-bold text-gray-900 mb-2">Nhà hàng nổi bật</h2>
@@ -431,7 +693,7 @@ function CustomerHomeContent() {
       {/* Promotions Section */}
       {promotions.length > 0 && (
         <section className="py-12 bg-white">
-          <div className="container mx-auto px-4">
+          <div className="container mx-auto px-3 max-w-7xl">
             <div className="flex items-center justify-between mb-8">
               <h2 className="text-3xl font-bold text-gray-900">Khuyến mãi hôm nay</h2>
               <Link href="/customer/promotions" className="text-orange-600 font-medium hover:text-orange-700 flex items-center">
@@ -577,6 +839,7 @@ function CustomerHomeContent() {
           </div>
         </div>
       </footer>
+
     </div>
   );
 }

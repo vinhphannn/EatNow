@@ -87,7 +87,7 @@ export default function NavBar() {
 
 						{/* Cart */}
 						<Link
-							href="/customer/cart"
+							href="/customer/home"
 							className="relative p-2 text-gray-700 hover:text-orange-600"
 						>
 							<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

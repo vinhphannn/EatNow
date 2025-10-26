@@ -90,6 +90,77 @@ export default function AdminDriversPage() {
                     </div>
                     <div className="flex items-center gap-2">
                         <button onClick={()=> setSort(s=> s==='createdAt:desc' ? 'createdAt:asc' : 'createdAt:desc')} className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">Sắp xếp: {sort.endsWith('desc') ? 'Mới nhất' : 'Cũ nhất'}</button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await fetch(`${api}/demo/create-driver`, { method: 'POST', credentials: 'include' });
+                              // refresh
+                              const p = new URLSearchParams();
+                              p.set('page', String(page));
+                              p.set('limit', String(limit));
+                              if (q) p.set('q', q);
+                              if (status) p.set('status', status);
+                              if (sort) p.set('sort', sort);
+                              const res = await fetch(`${api}/admin/drivers?${p.toString()}`, { credentials: 'include', cache: 'no-store' });
+                              const json = await res.json();
+                              setData(Array.isArray(json?.data) ? json.data : []);
+                              setTotal(Number(json?.meta?.total ?? json?.total ?? 0));
+                            } catch {}
+                          }}
+                          className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
+                        >Tạo tài xế demo</button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await fetch(`${api}/demo/seed`, { method: 'POST', credentials: 'include' });
+                            } catch {}
+                          }}
+                          className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
+                        >Seed demo data</button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const current = [...data];
+                              await Promise.all(current.map(d => fetch(`${api}/admin/drivers/${d.id}/auto`, {
+                                method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enable: true })
+                              })));
+                              // refresh
+                              const p = new URLSearchParams();
+                              p.set('page', String(page));
+                              p.set('limit', String(limit));
+                              if (q) p.set('q', q);
+                              if (status) p.set('status', status);
+                              if (sort) p.set('sort', sort);
+                              const res = await fetch(`${api}/admin/drivers?${p.toString()}`, { credentials: 'include', cache: 'no-store' });
+                              const json = await res.json();
+                              setData(Array.isArray(json?.data) ? json.data : []);
+                              setTotal(Number(json?.meta?.total ?? json?.total ?? 0));
+                            } catch {}
+                          }}
+                          className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
+                        >Bật Auto tất cả</button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const current = [...data];
+                              await Promise.all(current.map(d => fetch(`${api}/admin/drivers/${d.id}/auto`, {
+                                method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enable: false })
+                              })));
+                              // refresh
+                              const p = new URLSearchParams();
+                              p.set('page', String(page));
+                              p.set('limit', String(limit));
+                              if (q) p.set('q', q);
+                              if (status) p.set('status', status);
+                              if (sort) p.set('sort', sort);
+                              const res = await fetch(`${api}/admin/drivers?${p.toString()}`, { credentials: 'include', cache: 'no-store' });
+                              const json = await res.json();
+                              setData(Array.isArray(json?.data) ? json.data : []);
+                              setTotal(Number(json?.meta?.total ?? json?.total ?? 0));
+                            } catch {}
+                          }}
+                          className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
+                        >Tắt Auto tất cả</button>
                     </div>
                 </div>
 

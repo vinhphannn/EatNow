@@ -6,16 +6,20 @@ import { useToast } from '../../../components';
 import { useRestaurantNotifications } from '../../../hooks/useSocket';
 import { Tabs, Tab, Card, CardContent, CardHeader, CardActions, List, ListItem, ListItemText, ListItemIcon, Chip, Button, Stack, Typography, Divider, Box } from '@mui/material';
 import OrderStatusChip from '@/components/ui/OrderStatusChip';
-import { BanknotesIcon, CubeIcon, ClockIcon } from '@heroicons/react/24/outline';
+import NewOrderNotification from '@/components/NewOrderNotification';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faUser, faPhone, faUtensils, faMoneyBillWave, faTruck, faCalendarAlt, faMapMarkerAlt } from '@fortawesome/free-solid-svg-icons';
 
 interface Order {
   _id: string;
+  orderCode?: string;
   items: Array<{
     itemId: string;
     name: string;
     price: number;
     quantity: number;
     subtotal: number;
+    specialInstructions?: string;
   }>;
   total: number;
   deliveryFee: number;
@@ -28,9 +32,16 @@ interface Order {
     note?: string;
   };
   specialInstructions: string;
+  recipientName?: string;
+  recipientPhonePrimary?: string;
+  recipientPhoneSecondary?: string;
+  purchaserPhone?: string;
   paymentMethod: 'cash' | 'bank_transfer';
   status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
   createdAt: string;
+  updatedAt: string;
+  estimatedDeliveryTime?: string;
+  deliveryDistance?: number;
   customerId: {
     _id: string;
     name: string;
@@ -41,28 +52,47 @@ interface Order {
     _id: string;
     name: string;
     phone: string;
+    vehicleType?: string;
+    licensePlate?: string;
   };
 }
 
 export default function RestaurantOrdersPage() {
   const router = useRouter();
   const api = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
-  const { showToast, ToastContainer } = useToast();
+  const { showToast } = useToast();
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
   const [restaurantId, setRestaurantId] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'in-progress' | 'completed'>('in-progress');
+  const [activeTab, setActiveTab] = useState<'pending' | 'preparing' | 'delivering' | 'completed' | 'cancelled'>('pending');
+  const [notificationSound, setNotificationSound] = useState<HTMLAudioElement | null>(null);
+  
+  // New order notification popup
+  const [newOrderPopup, setNewOrderPopup] = useState<{
+    open: boolean;
+    order: any;
+  }>({
+    open: false,
+    order: null
+  });
   
   // Setup restaurant notifications
-  const token = typeof window !== 'undefined' ? localStorage.getItem('eatnow_token') : null;
   const { socket, connected } = useRestaurantNotifications(restaurantId || '');
 
   // Get restaurant ID from API (cookie-based auth)
   useEffect(() => {
     loadRestaurantId();
   }, []);
+
+  // Load orders when restaurantId is available
+  useEffect(() => {
+    if (restaurantId) {
+      console.log('🔍 Restaurant ID loaded, loading orders:', restaurantId);
+      loadOrders();
+    }
+  }, [restaurantId]); // Only depend on restaurantId, not loadOrders
 
   // Listen for order updates
   useEffect(() => {
@@ -84,28 +114,43 @@ export default function RestaurantOrdersPage() {
 
   const loadRestaurantId = async () => {
     try {
+      console.log('🔍 Loading restaurant ID...');
       const response = await fetch(`${api}/api/v1/restaurants/mine`, {
         credentials: 'include'
+      });
+
+      console.log('🔍 Restaurant API response:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
       });
 
       if (response.ok) {
         try {
           const restaurant = await response.json();
-          setRestaurantId(restaurant._id || restaurant.id || '');
+          console.log('🔍 Restaurant data loaded:', restaurant);
+          const restaurantId = restaurant._id || restaurant.id || '';
+          setRestaurantId(restaurantId);
+          console.log('🔍 Restaurant ID set:', restaurantId);
         } catch (jsonError) {
           console.error('JSON parsing error in loadRestaurantId:', jsonError);
         }
       } else if (response.status === 401 || response.status === 403) {
+        console.log('❌ Authentication failed, redirecting to login');
         router.push('/restaurant/login');
+      } else {
+        console.error('❌ Restaurant API error:', response.status, response.statusText);
       }
     } catch (error) {
-      console.error('Load restaurant ID error:', error);
+      console.error('❌ Load restaurant ID error:', error);
     }
   };
 
 
+  // Listen for order updates
   useEffect(() => {
-    if (socket) {
+    if (socket && connected) {
+      console.log('🔌 Setting up Socket.IO listeners for restaurant orders');
       const onStatus = (payload: any) => {
         try {
           const short = String(payload.orderId || '').slice(-8).toUpperCase();
@@ -113,28 +158,122 @@ export default function RestaurantOrdersPage() {
         } catch {}
         loadOrders();
       };
+
+      const onNewOrder = (payload: any) => {
+        try {
+          console.log('🆕 New order received:', payload);
+          const order = payload.order || payload;
+          const orderCode = order?.orderCode || order?.id || 'đơn hàng';
+          
+          // Show popup notification with full order details
+          console.log('📋 Showing popup for order:', order);
+          console.log('📋 Order items:', order.items);
+          console.log('📋 Order customer:', order.customerId);
+          console.log('📋 Order total:', order.total);
+          console.log('📋 Order delivery address:', order.deliveryAddress);
+          
+          // Ensure we have all necessary data for the popup
+          const enrichedOrder = {
+            ...order,
+            // Add fallbacks for missing data
+            items: order.items || order.orderItems || [],
+            total: order.total || order.subtotal || 0,
+            deliveryAddress: order.deliveryAddress || order.delivery_address || 'Địa chỉ chưa cập nhật',
+            recipientName: order.recipientName || order.recipient_name || order.customerId?.name || 'Chưa cập nhật',
+            recipientPhonePrimary: order.recipientPhonePrimary || order.recipient_phone || order.customerId?.phone || 'Chưa cập nhật'
+          };
+          
+          setNewOrderPopup({
+            open: true,
+            order: enrichedOrder
+          });
+          
+          showToast(`🆕 Có đơn hàng mới! Mã: ${orderCode}`, 'success');
+          
+          // Reload orders to show the new order
+          loadOrders();
+          
+          // Play continuous notification sound until accepted
+          if (typeof window !== 'undefined' && 'Audio' in window) {
+            try {
+              // Stop any existing sound first
+              if (notificationSound) {
+                notificationSound.pause();
+                notificationSound.currentTime = 0;
+              }
+              
+              const audio = new Audio('/notify.mp3');
+              audio.volume = 0.7;
+              audio.loop = true; // Loop until accepted
+              
+              // Add event listeners for debugging
+              audio.addEventListener('loadstart', () => console.log('🔊 Audio loading started'));
+              audio.addEventListener('canplay', () => console.log('🔊 Audio can play'));
+              audio.addEventListener('error', (e) => console.error('🔊 Audio error:', e));
+              
+              const playPromise = audio.play();
+              if (playPromise !== undefined) {
+                playPromise.then(() => {
+                  console.log('🔊 Audio playing successfully');
+                  setNotificationSound(audio);
+                }).catch((error) => {
+                  console.error('🔊 Audio play failed:', error);
+                });
+              }
+            } catch (e) {
+              console.error('🔊 Could not play notification sound:', e);
+            }
+          }
+        } catch (error) {
+          console.error('Error handling new order:', error);
+        }
+      };
+
       socket.on('order_status_update:v1', onStatus);
+      socket.on('new_order:v1', onNewOrder);
+      
       return () => {
+        console.log('🧹 Cleaning up Socket.IO listeners');
         socket.off('order_status_update:v1', onStatus);
+        socket.off('new_order:v1', onNewOrder);
       };
     }
-  }, [socket]);
+  }, [socket, connected, showToast]);
 
-  useEffect(() => {
-    loadOrders();
-  }, []);
 
   const loadOrders = async () => {
     try {
+      console.log('🔍 Loading orders for restaurant:', restaurantId);
       const response = await fetch(`${api}/api/v1/restaurants/mine/orders`, {
         credentials: 'include'
+      });
+
+      console.log('🔍 Orders API response:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
       });
 
       if (response.ok) {
         try {
           const ordersData = await response.json();
+          console.log('🔍 Raw orders data:', ordersData);
           const raw = Array.isArray(ordersData) ? ordersData : (ordersData?.data || []);
           const normalized = Array.isArray(raw) ? raw.map((o: any) => {
+            // Debug log for order data
+            console.log('🔍 Restaurant Orders - Raw order data:', {
+              _id: o._id || o.id,
+              customerId: o.customerId,
+              customer: o.customer,
+              total: o.total,
+              finalTotal: o.finalTotal,
+              items: o.items,
+              deliveryAddress: o.deliveryAddress,
+              recipientName: o.recipientName,
+              recipientPhonePrimary: o.recipientPhonePrimary,
+              paymentMethod: o.paymentMethod
+            });
+            
             // Normalize shape to match UI expectations
             if (!o.customerId && o.customer) {
               o.customerId = {
@@ -144,12 +283,39 @@ export default function RestaurantOrdersPage() {
                 email: o.customer?.email || ''
               };
             }
-            if (!o.finalTotal && typeof o.total === 'number') {
-              o.finalTotal = o.total;
+            
+            // Ensure driverId is properly populated
+            if (!o.driverId && o.driver) {
+              o.driverId = {
+                _id: o.driver?._id || '',
+                name: o.driver?.name || '',
+                phone: o.driver?.phone || '',
+                vehicleType: o.driver?.vehicleType || '',
+                licensePlate: o.driver?.licensePlate || ''
+              };
             }
+            
+            // Calculate finalTotal properly
+            if (!o.finalTotal) {
+              const total = o.total || 0;
+              const deliveryFee = o.deliveryFee || 0;
+              o.finalTotal = total + deliveryFee;
+            }
+            
             if (!o._id && o.id) {
               o._id = o.id;
             }
+            
+            // Ensure orderCode is available
+            if (!o.orderCode && o.code) {
+              o.orderCode = o.code;
+            }
+            
+            // Set default payment method to bank_transfer
+            if (!o.paymentMethod) {
+              o.paymentMethod = 'bank_transfer';
+            }
+            
             return o;
           }) : [];
           setOrders(normalized);
@@ -163,6 +329,7 @@ export default function RestaurantOrdersPage() {
         showToast('Không thể tải danh sách đơn hàng', 'error');
       }
     } catch (error) {
+      console.error('❌ Load orders error:', error);
       showToast('Có lỗi xảy ra khi tải danh sách đơn hàng', 'error');
     } finally {
       setLoading(false);
@@ -171,10 +338,19 @@ export default function RestaurantOrdersPage() {
 
   // Filter orders based on active tab
   const filteredOrders = (Array.isArray(orders) ? orders : []).filter(order => {
-    if (activeTab === 'in-progress') {
-      return ['pending', 'confirmed', 'preparing', 'ready'].includes(order.status);
-    } else {
-      return ['delivered', 'cancelled'].includes(order.status);
+    switch (activeTab) {
+      case 'pending':
+        return order.status === 'pending';
+      case 'preparing':
+        return order.status === 'confirmed';
+      case 'delivering':
+        return order.status === 'ready';
+      case 'completed':
+        return order.status === 'delivered';
+      case 'cancelled':
+        return order.status === 'cancelled';
+      default:
+        return false;
     }
   });
 
@@ -182,8 +358,14 @@ export default function RestaurantOrdersPage() {
     setUpdating(orderId);
     try {
       const token = localStorage.getItem('eatnow_token');
-      // Stop ring immediately for better UX
-      try { window.dispatchEvent(new CustomEvent('eatnow:stop_ring')); } catch {}
+      
+      // Stop notification sound when accepting order
+      if (notificationSound) {
+        notificationSound.pause();
+        notificationSound.currentTime = 0;
+        setNotificationSound(null);
+      }
+      
       const response = await fetch(`${api}/api/v1/orders/${orderId}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -203,6 +385,55 @@ export default function RestaurantOrdersPage() {
       setUpdating(null);
     }
   };
+
+  // Handle new order popup actions
+  const handleAcceptOrder = async (orderId: string) => {
+    try {
+      // Stop notification sound
+      if (notificationSound) {
+        notificationSound.pause();
+        notificationSound.currentTime = 0;
+        setNotificationSound(null);
+      }
+      
+      // Update order status to confirmed
+      await updateOrderStatus(orderId, 'confirmed');
+      
+      // Close popup
+      setNewOrderPopup({ open: false, order: null });
+      
+      showToast('Đã xác nhận đơn hàng thành công!', 'success');
+    } catch (error) {
+      showToast('Có lỗi xảy ra khi xác nhận đơn hàng', 'error');
+    }
+  };
+
+  const handleRejectOrder = async (orderId: string) => {
+    try {
+      // Stop notification sound
+      if (notificationSound) {
+        notificationSound.pause();
+        notificationSound.currentTime = 0;
+        setNotificationSound(null);
+      }
+      
+      // Update order status to cancelled
+      await updateOrderStatus(orderId, 'cancelled');
+      
+      // Close popup
+      setNewOrderPopup({ open: false, order: null });
+      
+      showToast('Đã từ chối đơn hàng', 'info');
+    } catch (error) {
+      showToast('Có lỗi xảy ra khi từ chối đơn hàng', 'error');
+    }
+  };
+
+  const handleClosePopup = () => {
+    setNewOrderPopup({ open: false, order: null });
+    // Don't stop sound here - let it continue until order is processed
+  };
+
 
   const getStatusText = (status: string) => {
     const statusMap = {
@@ -271,106 +502,231 @@ export default function RestaurantOrdersPage() {
 
   return (
     <div>
-      <Typography variant="h4" component="h1" sx={{ mb: 3 }}>Quản lý đơn hàng</Typography>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
+        <Typography variant="h4" component="h1">Quản lý đơn hàng</Typography>
+      </Stack>
+      
+      {/* New Order Notification Popup */}
+      <NewOrderNotification
+        open={newOrderPopup.open}
+        order={newOrderPopup.order}
+        onAccept={handleAcceptOrder}
+        onReject={handleRejectOrder}
+        onClose={handleClosePopup}
+        loading={updating === newOrderPopup.order?._id}
+      />
 
       <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 3 }}>
-        <Tab value="in-progress" label={`Đơn đang thực hiện (${orders.filter(o => ['pending', 'confirmed', 'preparing', 'ready'].includes(o.status)).length})`} />
-        <Tab value="completed" label={`Đơn đã hoàn thành (${orders.filter(o => ['delivered', 'cancelled'].includes(o.status)).length})`} />
+        <Tab 
+          value="pending" 
+          label={`Chờ xác nhận (${orders.filter(o => o.status === 'pending').length})`} 
+        />
+        <Tab 
+          value="preparing" 
+          label={`Đang làm (${orders.filter(o => o.status === 'confirmed').length})`} 
+        />
+        <Tab 
+          value="delivering" 
+          label={`Sẵn sàng giao (${orders.filter(o => o.status === 'ready').length})`} 
+        />
+        <Tab 
+          value="completed" 
+          label={`Đã hoàn thành (${orders.filter(o => o.status === 'delivered').length})`} 
+        />
+        <Tab 
+          value="cancelled" 
+          label={`Đã hủy (${orders.filter(o => o.status === 'cancelled').length})`} 
+        />
       </Tabs>
 
           {filteredOrders.length === 0 ? (
             <Stack alignItems="center" justifyContent="center" sx={{ py: 8 }}>
-              <Typography variant="h1" sx={{ fontSize: 56 }}>📦</Typography>
-              <Typography variant="h6" sx={{ mt: 1 }}>Chưa có đơn hàng nào</Typography>
-              <Typography variant="body2" color="text.secondary">Các đơn hàng mới sẽ xuất hiện ở đây</Typography>
+              <Typography variant="h1" sx={{ fontSize: 56 }}>
+                {activeTab === 'pending' && '⏳'}
+                {activeTab === 'preparing' && '👨‍🍳'}
+                {activeTab === 'delivering' && '🚚'}
+                {activeTab === 'completed' && '✅'}
+                {activeTab === 'cancelled' && '❌'}
+              </Typography>
+              <Typography variant="h6" sx={{ mt: 1 }}>
+                {activeTab === 'pending' && 'Chưa có đơn hàng chờ xác nhận'}
+                {activeTab === 'preparing' && 'Chưa có đơn hàng đang chuẩn bị'}
+                {activeTab === 'delivering' && 'Chưa có đơn hàng sẵn sàng giao'}
+                {activeTab === 'completed' && 'Chưa có đơn hàng hoàn thành'}
+                {activeTab === 'cancelled' && 'Chưa có đơn hàng bị hủy'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {activeTab === 'pending' && 'Các đơn hàng mới sẽ xuất hiện ở đây'}
+                {activeTab === 'preparing' && 'Các đơn hàng đã xác nhận sẽ chuyển sang đây'}
+                {activeTab === 'delivering' && 'Các đơn hàng đã chuẩn bị xong sẽ hiển thị ở đây'}
+                {activeTab === 'completed' && 'Các đơn hàng đã giao sẽ hiển thị ở đây'}
+                {activeTab === 'cancelled' && 'Các đơn hàng bị hủy sẽ hiển thị ở đây'}
+              </Typography>
             </Stack>
           ) : (
             <Stack spacing={2}>
               {filteredOrders.map((order) => (
-                <Card key={order._id} elevation={0} sx={{ border: theme => `1px solid ${theme.palette.divider}` }}>
+                <Card 
+                  key={order._id} 
+                  elevation={0} 
+                  sx={{ 
+                    border: theme => `1px solid ${theme.palette.divider}`,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease-in-out',
+                    '&:hover': {
+                      boxShadow: 2,
+                      borderColor: 'primary.main'
+                    }
+                  }}
+                  onClick={() => router.push(`/restaurant/orders/${order._id}`)}
+                >
                   <CardHeader
                     title={
                       <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
                         <Box>
-                          <Typography variant="subtitle1" fontWeight={600}>Đơn hàng #{order._id.slice(-8).toUpperCase()}</Typography>
-                          <Typography variant="caption" color="text.secondary">{new Date(order.createdAt).toLocaleString('vi-VN')}</Typography>
+                          <Typography variant="subtitle1" fontWeight={600}>
+                            Đơn hàng #{order.orderCode || order._id.slice(-8).toUpperCase()}
+                          </Typography>
+                          <Stack direction="row" spacing={2} alignItems="center">
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <FontAwesomeIcon icon={faCalendarAlt} style={{ fontSize: '12px' }} />
+                              {new Date(order.createdAt).toLocaleString('vi-VN')}
+                            </Typography>
+                            {order.deliveryDistance && (
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <FontAwesomeIcon icon={faMapMarkerAlt} style={{ fontSize: '12px' }} />
+                                {order.deliveryDistance.toFixed(1)}km
+                              </Typography>
+                            )}
+                          </Stack>
                         </Box>
                         <OrderStatusChip status={order.status as any} />
                       </Stack>
                     }
                   />
                   <CardContent>
-                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} divider={<Divider orientation="vertical" flexItem sx={{ display: { xs: 'none', md: 'block' } }} /> }>
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} alignItems="center">
+                      {/* Thông tin cơ bản */}
                       <Box sx={{ flex: 1 }}>
-                        <Typography variant="subtitle2" sx={{ mb: 1 }}>Thông tin khách hàng</Typography>
-                        <Typography>{order.customerId.name}</Typography>
-                        <Typography variant="body2" color="text.secondary">📞 {order.customerId.phone}</Typography>
-                        <Typography variant="body2" color="text.secondary">📧 {order.customerId.email}</Typography>
+                        <Stack direction="row" spacing={2} alignItems="center">
+                          <Box>
+                            <Typography variant="body2" color="text.secondary">
+                              Khách hàng:
+                            </Typography>
+                            <Typography variant="body1" fontWeight={600}>
+                              {order.customerId?.name || 'Chưa cập nhật'}
+                            </Typography>
+                          </Box>
+                          <Box>
+                            <Typography variant="body2" color="text.secondary">
+                              SĐT:
+                            </Typography>
+                            <Typography variant="body1" fontWeight={600}>
+                              {order.customerId?.phone || 'Chưa cập nhật'}
+                            </Typography>
+                          </Box>
+                        </Stack>
                       </Box>
-                      <Box sx={{ flex: 1 }}>
-                        <Typography variant="subtitle2" sx={{ mb: 1 }}>Giao đến</Typography>
-                        <Typography>
-                          {typeof order.deliveryAddress === 'string' ? order.deliveryAddress : (order.deliveryAddress?.addressLine || 'Địa chỉ không xác định')}
+
+                      {/* Số món và tổng tiền món ăn */}
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <Box textAlign="center">
+                          <Typography variant="body2" color="text.secondary">
+                            Số món:
+                          </Typography>
+                          <Typography variant="h6" fontWeight={600} color="primary.main">
+                            {order.items?.length || 0}
+                          </Typography>
+                        </Box>
+                        <Box textAlign="center">
+                          <Typography variant="body2" color="text.secondary">
+                            Tổng món ăn:
+                          </Typography>
+                          <Typography variant="h6" fontWeight={600} color="primary.main">
+                            ₫{(order.total || 0).toLocaleString('vi-VN')}
+                          </Typography>
+                        </Box>
+                      </Box>
+
+                      {/* Trạng thái tài xế */}
+                      <Box textAlign="center">
+                        <Typography variant="body2" color="text.secondary">
+                          Tài xế:
                         </Typography>
-                        {order.specialInstructions && (
-                          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Ghi chú: {order.specialInstructions}</Typography>
+                        {order.driverId ? (
+                          <Typography variant="body1" fontWeight={600} color="success.main">
+                            {order.driverId.name || 'Đã chỉ định'}
+                          </Typography>
+                        ) : (
+                          <Typography variant="body1" fontWeight={600} color="warning.main">
+                            Chưa chỉ định
+                          </Typography>
                         )}
                       </Box>
                     </Stack>
-
-                    <Box sx={{ mt: 2 }}>
-                      <Typography variant="subtitle2" sx={{ mb: 1 }}>Món đã đặt</Typography>
-                      <List dense>
-                        {order.items.map((item, index) => (
-                          <ListItem key={index} secondaryAction={
-                            <Typography fontWeight={600}>{item.subtotal.toLocaleString('vi-VN')}đ</Typography>
-                          }>
-                            <ListItemIcon><CubeIcon width={18} /></ListItemIcon>
-                            <ListItemText primary={item.name} secondary={`×${item.quantity}`} />
-                          </ListItem>
-                        ))}
-                      </List>
-                    </Box>
-
-                    <Divider sx={{ my: 2 }} />
-                    <Stack direction="row" alignItems="center" justifyContent="space-between">
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        <BanknotesIcon width={18} />
-                        <Typography variant="body2" color="text.secondary">{order.paymentMethod === 'cash' ? 'Tiền mặt' : 'Chuyển khoản'}</Typography>
-                      </Stack>
-                      <Typography variant="h6">{order.finalTotal.toLocaleString('vi-VN')}đ</Typography>
-                    </Stack>
                   </CardContent>
-                  <CardActions sx={{ px: 2, pb: 2, pt: 0, display: 'flex', justifyContent: 'space-between' }}>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <ClockIcon width={16} />
-                      <Typography variant="body2" color="text.secondary">
-                        {order.status === 'pending' && 'Chờ xác nhận từ nhà hàng'}
-                        {order.status === 'confirmed' && 'Đã xác nhận, chờ chuẩn bị'}
-                        {order.status === 'preparing' && 'Đang chuẩn bị món ăn'}
-                        {order.status === 'ready' && 'Món ăn đã sẵn sàng'}
-                        {order.status === 'delivered' && 'Đã giao hàng thành công'}
-                        {order.status === 'cancelled' && 'Đơn hàng đã bị hủy'}
-                      </Typography>
+                  
+                  {/* Action buttons based on tab */}
+                  <CardActions sx={{ px: 2, pb: 2 }}>
+                    <Stack direction="row" spacing={1} sx={{ width: '100%' }}>
+                      {activeTab === 'pending' && (
+                        <>
+                          <Button
+                            variant="contained"
+                            color="success"
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updateOrderStatus(order._id, 'confirmed');
+                            }}
+                            disabled={updating === order._id}
+                            sx={{ flex: 1 }}
+                          >
+                            {updating === order._id ? 'Đang xử lý...' : 'Xác nhận'}
+                          </Button>
+                          <Button
+                            variant="outlined"
+                            color="error"
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updateOrderStatus(order._id, 'cancelled');
+                            }}
+                            disabled={updating === order._id}
+                            sx={{ flex: 1 }}
+                          >
+                            {updating === order._id ? 'Đang xử lý...' : 'Từ chối'}
+                          </Button>
+                        </>
+                      )}
+                      
+                      {activeTab === 'preparing' && order.status === 'confirmed' && (
+                        <Button
+                          variant="contained"
+                          color="success"
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateOrderStatus(order._id, 'ready');
+                          }}
+                          disabled={updating === order._id}
+                          sx={{ flex: 1 }}
+                        >
+                          {updating === order._id ? 'Đang xử lý...' : 'Đã chuẩn bị xong'}
+                        </Button>
+                      )}
+                      
+                      {activeTab === 'delivering' && (
+                        <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 1 }}>
+                          Đang chờ tài xế giao hàng
+                        </Typography>
+                      )}
                     </Stack>
-                    {getNextStatus(order.status) && (
-                      <Button
-                        variant="contained"
-                        color="primary"
-                        disableElevation
-                        onClick={() => updateOrderStatus(order._id, getNextStatus(order.status)!)}
-                        disabled={updating === order._id}
-                        sx={{ textTransform: 'none' }}
-                      >
-                        {updating === order._id ? 'Đang xử lý...' : getNextStatusText(order.status)}
-                      </Button>
-                    )}
                   </CardActions>
                 </Card>
               ))}
             </Stack>
           )}
-      <ToastContainer />
     </div>
   );
 }

@@ -15,6 +15,7 @@ export default function AdminNavBar() {
 					<Link href="/admin/customers" className={isActive("/admin/customers")}>Khách hàng</Link>
 					<Link href="/admin/drivers" className={isActive("/admin/drivers")}>Tài xế</Link>
 					<Link href="/admin/orders" className={isActive("/admin/orders")}>Đơn hàng</Link>
+					<Link href="/admin/categories" className={isActive("/admin/categories")}>Danh mục</Link>
 					<Link href="/admin/vouchers" className={isActive("/admin/vouchers")}>Khuyến mãi</Link>
 					<Link href="/admin/analytics" className={isActive("/admin/analytics")}>Thống kê</Link>
 					<Link href="/admin/settings" className={isActive("/admin/settings")}>Cấu hình</Link>

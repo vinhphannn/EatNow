@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { apiClient } from '@/services/api.client';
 
 interface ImageUploadProps {
@@ -13,12 +13,10 @@ interface ImageUploadProps {
 export default function ImageUpload({ value, onChange, placeholder = "Chọn hình ảnh...", className = "" }: ImageUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
+  const uploadFile = async (file: File) => {
     // Validate file type
     if (!file.type.startsWith('image/')) {
       alert('Vui lòng chọn file hình ảnh hợp lệ (JPG, PNG, GIF, WebP)');
@@ -67,8 +65,8 @@ export default function ImageUpload({ value, onChange, placeholder = "Chọn hì
         const data = await response.json();
         onChange(data.secure_url);
       } else {
-        // Fallback: upload via backend so BE stores and returns a Cloud URL
-        const res = await apiClient.upload<{ id: string; url: string }>(`/api/v1/images/upload`, file);
+        // Fallback: upload via backend (apiClient already prefixes /api/v1)
+        const res = await apiClient.upload<{ id: string; url: string }>(`/images/upload`, file);
         const url = (res as any)?.url;
         if (!url) throw new Error('Upload failed');
         onChange(url);
@@ -82,6 +80,12 @@ export default function ImageUpload({ value, onChange, placeholder = "Chọn hì
     }
   };
 
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    await uploadFile(file);
+  };
+
   const handleClick = () => {
     fileInputRef.current?.click();
   };
@@ -93,6 +97,56 @@ export default function ImageUpload({ value, onChange, placeholder = "Chọn hì
       fileInputRef.current.value = '';
     }
   };
+
+  // Drag & Drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    
+    const files = Array.from(e.dataTransfer.files);
+    const imageFile = files.find(file => file.type.startsWith('image/'));
+    
+    if (imageFile) {
+      await uploadFile(imageFile);
+    } else {
+      alert('Vui lòng kéo thả file hình ảnh hợp lệ');
+    }
+  };
+
+  // Paste from clipboard
+  useEffect(() => {
+    const handlePaste = async (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (file) {
+            await uploadFile(file);
+          }
+          break;
+        }
+      }
+    };
+
+    document.addEventListener('paste', handlePaste);
+    return () => {
+      document.removeEventListener('paste', handlePaste);
+    };
+  }, []);
 
   const displayImage = value || preview;
 
@@ -109,7 +163,14 @@ export default function ImageUpload({ value, onChange, placeholder = "Chọn hì
       {/* Upload Area */}
       <div 
         onClick={handleClick}
-        className={`w-full bg-gray-100 rounded-lg border-2 border-dashed border-gray-300 cursor-pointer hover:border-orange-400 hover:bg-gray-50 transition-colors relative overflow-hidden ${className.includes('h-') ? className : 'h-48'}`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        className={`w-full bg-gray-100 rounded-lg border-2 border-dashed cursor-pointer transition-colors relative overflow-hidden ${
+          isDragOver 
+            ? 'border-orange-500 bg-orange-50' 
+            : 'border-gray-300 hover:border-orange-400 hover:bg-gray-50'
+        } ${className.includes('h-') ? className : 'h-48'}`}
       >
         {displayImage ? (
           <div className="relative w-full h-full">
@@ -140,34 +201,23 @@ export default function ImageUpload({ value, onChange, placeholder = "Chọn hì
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <div className="text-center">
-              <div className="text-4xl text-gray-400 mb-2">📷</div>
-              <p className="text-gray-500 text-sm">{placeholder}</p>
-              <p className="text-gray-400 text-xs mt-1">JPG, PNG, GIF, WebP (tối đa 10MB)</p>
+              <div className="text-4xl text-gray-400 mb-2">
+                {isDragOver ? '📤' : '📷'}
+              </div>
+              <p className="text-gray-500 text-sm">
+                {isDragOver ? 'Thả hình ảnh vào đây' : placeholder}
+              </p>
+              <p className="text-gray-400 text-xs mt-1">
+                {isDragOver 
+                  ? 'Hoặc nhấn Ctrl+V để dán từ clipboard' 
+                  : 'Kéo thả, click chọn, hoặc Ctrl+V • JPG, PNG, GIF, WebP (tối đa 2MB)'
+                }
+              </p>
             </div>
           </div>
         )}
       </div>
 
-      {/* Alternative URL Input */}
-      <div className="mt-2">
-        <details className="text-sm" open>
-          <summary className="text-gray-500 cursor-pointer hover:text-gray-700">
-            Dán link hình ảnh (Cloudinary chưa được cấu hình)
-          </summary>
-          <div className="mt-2">
-            <input
-              type="url"
-              value={value || ''}
-              onChange={(e) => onChange(e.target.value)}
-              placeholder="https://example.com/image.jpg"
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              💡 Để upload file trực tiếp, hãy cấu hình Cloudinary trong file .env.local
-            </p>
-          </div>
-        </details>
-      </div>
     </div>
   );
 }

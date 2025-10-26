@@ -2,14 +2,14 @@ import { Controller, Get } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Connection as MongoConnection } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
-import { NotificationGateway } from './notification/notification.gateway';
+import { OptimizedNotificationGateway } from './notification/optimized-notification.gateway';
 
 @Controller('health')
 export class HealthController {
   constructor(
     private readonly config: ConfigService,
     @InjectConnection() private readonly mongoConn: MongoConnection,
-    private readonly gateway: NotificationGateway,
+    private readonly gateway: OptimizedNotificationGateway,
   ) {}
 
   @Get()

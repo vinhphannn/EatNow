@@ -1,0 +1,67 @@
+---
+description: >
+  Quy tắc phát triển thống nhất cho toàn bộ dự án.  
+  Mục tiêu: Code đồng bộ, hiệu năng, dễ bảo trì, và tận dụng tối đa thành phần sẵn có.  
+globs:
+  - "**/*.ts"
+  - "**/*.js"
+  - "**/*.java"
+  - "**/*.py"
+  - "**/*.json"
+  - "**/*.md"
+alwaysApply: true
+---
+
+# ✅ Quy tắc tổng thể
+- Viết code **đồng bộ, tối giản**, tránh dư thừa.  
+- Ưu tiên **hiệu năng và khả năng mở rộng** thay vì thêm thư viện không cần thiết.  
+- Mọi module phải **độc lập rõ ràng**, không ràng buộc vòng tròn.  
+- Khi thêm tính năng mới, **đọc và cập nhật file `PROJECT.md`** mô tả thay đổi, công nghệ, cấu trúc dữ liệu.  
+
+# 📦 Cấu trúc dự án
+- Tách rõ `models`, `controllers`, `services`, `routes`, `utils`.  
+- Mọi thao tác DB phải thông qua **service layer** để dễ bảo trì và kiểm thử.  
+- Không viết logic trực tiếp trong route hoặc controller.  
+- Đặt tên file và biến **snake_case hoặc camelCase thống nhất**.  
+
+# 💾 Dữ liệu & Quan hệ
+- Tránh quan hệ nhiều-nhiều nếu có thể.  
+- Ưu tiên thiết kế **bảng trung gian tường minh** (vd: `CartItem` có trường `userId`, `restaurantId`, `foodId`).  
+- Giỏ hàng chỉ load theo **`restaurantId` hiện tại**.  
+
+# ⚙️ Code style & Comment
+- Comment ngắn gọn bằng **tiếng Việt**, giải thích logic, không mô tả hiển nhiên.  
+- Mỗi file có phần mô tả đầu file (mục đích, input/output).  
+- Format thống nhất (Prettier hoặc ESLint).  
+
+# 🔄 Quy trình làm việc
+1. Trước khi code: Cursor **đọc `PROJECT.md`** để nắm context.  
+2. Trong khi code: Cursor **tuân theo rule này**, gợi ý theo cấu trúc chuẩn.  
+3. Sau khi cập nhật code hoặc thêm module: Cursor **tự động cập nhật `PROJECT.md`** (mô tả, API, model, công nghệ).  
+
+# 🧠 Quy tắc AI hỗ trợ
+- Khi AI sinh code, luôn kiểm tra **tính tương thích** với module có sẵn.  
+- Nếu có thư viện tương tự đã được dùng, **tái sử dụng** thay vì cài mới.  
+- Nếu không chắc về cấu trúc, **đọc lại toàn bộ cây thư mục và `PROJECT.md`** để đồng bộ.  
+- Khi viết API, **tuân theo RESTful chuẩn**, đặt rõ `GET/POST/PUT/DELETE` và mã phản hồi hợp lý.  
+
+# 🧩 Hiệu năng
+- Dùng **index** hợp lý trong DB.  
+- Cache hợp lý tại tầng service (Redis hoặc memory).  
+- Hạn chế truy vấn lặp.  
+- Ưu tiên xử lý bất đồng bộ (Promise.all, transaction batch).  
+
+# 🔐 Bảo mật
+- Validate dữ liệu đầu vào (Joi/Zod).  
+- Không log thông tin nhạy cảm.  
+- Ẩn khóa và URL trong biến môi trường `.env`.  
+
+# 📈 Logging & Giám sát
+- Ghi log quan trọng (error, transaction, event).  
+- Tạo middleware thống kê thời gian phản hồi.  
+- Khi có lỗi, **ghi log + stack trace**, không ẩn lỗi gốc.  
+
+# 🚀 Triển khai
+- Luôn kiểm thử bằng Postman hoặc Jest trước khi merge.  
+- Mỗi lần build mới phải cập nhật version trong `PROJECT.md`.  
+

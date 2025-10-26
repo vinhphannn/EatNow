@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3001",
+    "dev": "next dev -p 3003",
     "build": "next build",
     "build:static": "next build",
     "start": "next start -p 3002",
@@ -38,6 +38,7 @@
     "postcss": "8.4.31",
     "react": "18.2.0",
     "react-dom": "18.2.0",
+    "react-error-boundary": "^6.0.0",
     "react-hook-form": "7.47.0",
     "react-hot-toast": "2.4.1",
     "socket.io-client": "^4.8.1",

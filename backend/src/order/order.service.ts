@@ -6,11 +6,14 @@ import { Order, OrderDocument, OrderStatus } from './schemas/order.schema';
 import { Cart, CartDocument } from '../cart/schemas/cart.schema';
 import { Item, ItemDocument } from '../restaurant/schemas/item.schema';
 import { Restaurant, RestaurantDocument } from '../restaurant/schemas/restaurant.schema';
-import { NotificationGateway } from '../notification/notification.gateway';
+import { OptimizedNotificationGateway } from '../notification/optimized-notification.gateway';
 import { OrderRealtimeService } from './services/order-realtime.service';
+import { RedisService } from '../common/services/redis.service';
 import { DistanceService } from '../common/services/distance.service';
 import { OrderAssignmentService } from './services/order-assignment.service';
 import { CustomerService } from '../customer/customer.service';
+import { OrderCreationService } from './services/order-creation.service';
+import { SmartDriverAssignmentService } from '../driver/services/smart-driver-assignment.service';
 
 @Injectable()
 export class OrderService {
@@ -20,217 +23,233 @@ export class OrderService {
     @InjectModel(Item.name) private readonly itemModel: Model<ItemDocument>,
     @InjectModel(Restaurant.name) private readonly restaurantModel: Model<RestaurantDocument>,
     @InjectModel(Driver.name) private readonly driverModel: Model<DriverDocument>,
-    private readonly notificationGateway: NotificationGateway,
+    private readonly notificationGateway: OptimizedNotificationGateway,
     private readonly orderRealtime: OrderRealtimeService,
     private readonly distanceService: DistanceService,
     private readonly orderAssignmentService: OrderAssignmentService,
     private readonly customerService: CustomerService,
+    private readonly orderCreationService: OrderCreationService,
+    private readonly redisService: RedisService,
+    private readonly smartDriverAssignmentService: SmartDriverAssignmentService,
   ) {}
 
   private readonly logger = new Logger(OrderService.name);
 
-  private generateOrderCode(): string {
-    const timestamp = Date.now().toString().slice(-6);
-    const random = Math.random().toString(36).substring(2, 5).toUpperCase();
-    return `ORD${timestamp}${random}`;
+  // Tạo đơn hàng từ giỏ hàng
+  async createOrderFromCart(
+    customerId: string,
+    restaurantId: string,
+    orderData: {
+      deliveryAddress: any;
+      recipient: { name: string; phone: string };
+      paymentMethod: string;
+      deliveryMode?: string;
+      scheduledAt?: Date;
+      tip?: number;
+      doorFee?: number;
+      voucherCode?: string;
+      specialInstructions?: string;
+    }
+  ) {
+    try {
+      const savedOrder = await this.orderCreationService.createOrderFromCart(
+        customerId,
+        restaurantId,
+        orderData
+      );
+
+      // TÌM TÀI XẾ NGAY KHI TẠO ĐƠN
+      // Vì nhiều quán không dùng app - tài xế sẽ đến đọc món mới làm
+      try {
+        this.logger.log(`Order ${savedOrder._id} created - starting immediate driver search`);
+        
+        // Thêm vào Redis queue để tìm tài xế
+        await this.redisService.addPendingOrder(savedOrder._id.toString());
+        this.logger.log(`Order ${savedOrder._id} added to pending orders queue for driver assignment`);
+        
+        // Trigger smart assignment ngay lập tức
+        await this.smartDriverAssignmentService.processPendingOrders();
+        
+      } catch (error) {
+        this.logger.error(`Failed to start driver assignment for order ${savedOrder._id}:`, error);
+      }
+
+      // Notify restaurant about new order
+      this.notificationGateway.notifyNewOrder(
+        String(restaurantId),
+        {
+          id: savedOrder._id,
+          customerId: customerId,
+          total: savedOrder.finalTotal,
+          items: savedOrder.items.length,
+          createdAt: (savedOrder as any).createdAt
+        }
+      );
+
+      return {
+        ...savedOrder.toObject(),
+        orderCode: savedOrder.code
+      };
+
+    } catch (error) {
+      console.error('Error creating order from cart:', error);
+      throw error;
+    }
   }
 
-  private formatDeliveryAddress(deliveryAddress: any) {
-    // If deliveryAddress is already in the correct format
-    if (deliveryAddress && typeof deliveryAddress === 'object' && 
-        deliveryAddress.label && deliveryAddress.addressLine && 
-        deliveryAddress.latitude !== undefined && deliveryAddress.longitude !== undefined) {
-      return {
-        label: deliveryAddress.label,
-        addressLine: deliveryAddress.addressLine,
-        latitude: Number(deliveryAddress.latitude),
-        longitude: Number(deliveryAddress.longitude),
-        note: deliveryAddress.note || '',
-      };
-    }
-
-    // If deliveryAddress is a string (legacy format), try to parse it
-    if (typeof deliveryAddress === 'string') {
-      return {
-        label: 'Địa chỉ giao hàng',
-        addressLine: deliveryAddress,
-        latitude: 0, // Default values - should be provided by frontend
-        longitude: 0,
-        note: '',
-      };
-    }
-
-    // Default fallback
-    return {
-      label: 'Địa chỉ giao hàng',
-      addressLine: 'Địa chỉ không xác định',
-      latitude: 0,
-      longitude: 0,
-      note: '',
-    };
-  }
 
   async createOrder(customerId: string, orderData: any) {
-    const { items, paymentMethod, deliveryAddress, specialInstructions, total, deliveryFee, deliveryDistance,
-      recipientName, recipientPhonePrimary, recipientPhoneSecondary, purchaserPhone } = orderData;
-
-    // Resolve Customer document by userId to ensure orders link to Customer._id
-    const customer = await this.customerService.getCustomerByUserId(customerId);
-    const customerDocId = new Types.ObjectId((customer as any)._id);
-
-    // Get restaurant ID from first item
-    const firstItem = await this.itemModel.findById(items[0].itemId);
-    if (!firstItem) {
-      throw new NotFoundException('Item not found');
-    }
-
-    const restaurantId = firstItem.restaurantId;
-
-    // Get all items to get their names
-    const itemIds = items.map(item => new Types.ObjectId(item.itemId));
-    const dbItems = await this.itemModel.find({ _id: { $in: itemIds } });
-    const itemMap = new Map(dbItems.map(item => [String(item._id), item]));
-
-    // Prepare order items
-    const orderItems = items.map(item => {
-      const dbItem = itemMap.get(item.itemId);
-      return {
-        itemId: new Types.ObjectId(item.itemId),
-        name: dbItem?.name || 'Unknown Item',
-        price: item.price,
-        quantity: item.quantity,
-        subtotal: item.price * item.quantity,
-      };
-    });
-
-    // Validate and format delivery address
-    const formattedDeliveryAddress = this.formatDeliveryAddress(deliveryAddress);
-
-    // Get restaurant location for distance calculation
-    const restaurant = await this.restaurantModel.findById(restaurantId);
-    if (!restaurant) {
-      throw new NotFoundException('Restaurant not found');
-    }
-
-    // Calculate distances (mock restaurant coordinates for now)
-    const restaurantLat = restaurant.latitude || 10.7769; // Mock coordinates
-    const restaurantLon = restaurant.longitude || 106.7009;
+    console.log('🔍 Backend received order data:', JSON.stringify(orderData, null, 2));
     
-    const distanceToRestaurant = this.distanceService.calculateDistance(
-      restaurantLat,
-      restaurantLon,
-      formattedDeliveryAddress.latitude,
-      formattedDeliveryAddress.longitude
-    );
+    // Handle both old and new format
+    const { items, paymentMethod, deliveryAddress, specialInstructions, deliveryDistance,
+      recipient, recipientName, recipientPhonePrimary, recipientPhoneSecondary, purchaserPhone, totals } = orderData;
 
-    const distanceToCustomer = distanceToRestaurant; // Same distance for now
+    // Extract totals from frontend data
+    const total = totals?.subtotal || 0;
+    const deliveryFee = totals?.deliveryFee || 0;
+    const tip = totals?.tip || 0;
+    const doorFee = totals?.doorFee || 0;
+    const finalTotal = totals?.finalTotal || (total + deliveryFee + tip + doorFee);
 
-    // Calculate estimated delivery time
-    const estimatedDeliveryTime = new Date();
-    estimatedDeliveryTime.setMinutes(
-      estimatedDeliveryTime.getMinutes() + 
-      this.distanceService.calculateEstimatedDeliveryTime(distanceToRestaurant / 1000)
-    );
-
-    // Create order
-    const order = new this.orderModel({
-      customerId: customerDocId,
-      restaurantId: new Types.ObjectId(restaurantId),
-      items: orderItems,
-      total,
-      deliveryFee,
-      finalTotal: total + deliveryFee,
-      deliveryAddress: formattedDeliveryAddress,
-      specialInstructions: specialInstructions || '',
-      recipientName: recipientName || customer?.name || '',
-      recipientPhonePrimary: recipientPhonePrimary || customer?.phone || '',
-      recipientPhoneSecondary: recipientPhoneSecondary || '',
-      purchaserPhone: purchaserPhone || customer?.phone || '',
-      paymentMethod,
-      status: OrderStatus.PENDING,
-      code: this.generateOrderCode(),
-      distanceToRestaurant,
-      distanceToCustomer,
-      deliveryDistance: deliveryDistance || (distanceToRestaurant / 1000), // Convert meters to km
-      estimatedDeliveryTime,
-      trackingHistory: [{
-        status: OrderStatus.PENDING,
-        timestamp: new Date(),
-        note: 'Đơn hàng đã được tạo',
-        updatedBy: 'customer'
-      }],
-    });
-
-    const savedOrder = await order.save();
-    // debug log removed
-
-    // Try to assign order to best available driver
-    try {
-      await this.orderAssignmentService.assignOrderToDriver(savedOrder._id.toString());
-    } catch (error) {
-      this.logger.error('Failed to assign order to driver', error as any);
+    // Extract recipient data from frontend (handle both old and new format)
+    const finalRecipientName = recipient?.name || recipientName || '';
+    const finalRecipientPhone = recipient?.phone || recipientPhonePrimary || recipientPhoneSecondary || '';
+    
+    if (!finalRecipientPhone) {
+      throw new Error('Thiếu số điện thoại người nhận');
+    }
+    if (!finalRecipientName) {
+      throw new Error('Thiếu tên người nhận');
     }
 
-    // Decrement only ordered items in customer's cart; keep others intact
+    // Prepare delivery address with recipient info
+    const formattedDeliveryAddress = {
+      ...deliveryAddress,
+      recipientName: finalRecipientName,
+      recipientPhone: finalRecipientPhone,
+    };
+
     try {
-      for (const it of orderItems) {
-        const itemId = (it as any).itemId as Types.ObjectId;
-        const qty = Number((it as any).quantity || 1);
-        if (itemId && qty > 0) {
-          await this.cartModel.updateOne(
-            { userId: new Types.ObjectId(customerId), itemId: new Types.ObjectId(itemId), isActive: true },
-            { $inc: { quantity: -qty } }
-          );
+      // Get restaurantId from orderData
+      const restaurantId = orderData.restaurantId;
+      
+      const savedOrder = await this.orderCreationService.createOrderFromCart(customerId, restaurantId, {
+        deliveryAddress: formattedDeliveryAddress,
+        recipient: {
+          name: finalRecipientName,
+          phone: finalRecipientPhone
+        },
+        paymentMethod,
+        deliveryMode: orderData.mode || 'immediate',
+        scheduledAt: orderData.scheduledAt ? new Date(orderData.scheduledAt) : null,
+        tip,
+        doorFee,
+        deliveryFee,
+        voucherCode: orderData.voucherCode || '',
+        specialInstructions
+      });
+
+      // Try to assign order to best available driver
+      try {
+        await this.orderAssignmentService.assignOrderToDriver(savedOrder._id.toString());
+      } catch (error) {
+        this.logger.error('Failed to assign order to driver', error as any);
+      }
+
+      // Clear the cart for this restaurant after successful order creation
+      try {
+        const cart = await this.cartModel.findOne({
+          userId: new Types.ObjectId(customerId),
+          restaurantId: new Types.ObjectId(savedOrder.restaurantId),
+          status: 'active'
+        });
+
+        if (cart) {
+          // Clear the cart items
+          cart.items = [];
+          cart.totalItems = 0;
+          cart.totalAmount = 0;
+          cart.itemCount = 0;
+          
+          await cart.save();
+          this.logger.log(`Cart cleared after order ${String((savedOrder as any)?._id)} for restaurant ${savedOrder.restaurantId}`);
         }
+      } catch (e) {
+        this.logger.error('Failed to clear cart after order creation', e as any);
       }
-      // Soft-remove any items that reach zero or below
-      await this.cartModel.updateMany(
-        { userId: new Types.ObjectId(customerId), isActive: true, quantity: { $lte: 0 } },
-        { $set: { isActive: false } }
+
+      // Notify restaurant about new order
+      this.notificationGateway.notifyNewOrder(
+        String(savedOrder.restaurantId),
+        {
+          id: savedOrder._id,
+          customerId: customerId,
+          total: savedOrder.finalTotal,
+          items: savedOrder.items.length,
+          createdAt: (savedOrder as any).createdAt
+        }
       );
-      // cart items adjusted after order
-    } catch (e) {
-      this.logger.error('Failed to adjust cart after order', e as any);
+
+      return savedOrder;
+    } catch (error) {
+      console.error('Error creating order:', error);
+      throw error;
     }
-
-    // Notify restaurant about new order
-    this.notificationGateway.notifyNewOrder(
-      String(restaurantId),
-      {
-        id: savedOrder._id,
-        customerId: customerId,
-        total: savedOrder.finalTotal,
-        items: savedOrder.items.length,
-        createdAt: (savedOrder as any).createdAt
-      }
-    );
-
-    return savedOrder;
   }
 
   async getOrdersByCustomer(userId: string) {
     try {
+      console.log('🔍 OrderService.getOrdersByCustomer - userId:', userId);
+      
       // First, find the customer profile for this user
       const customer = await this.customerService.getCustomerByUserId(userId);
+      console.log('🔍 OrderService - Found customer:', !!customer);
+      
       if (!customer) {
         this.logger.warn(`No customer profile found for user ${userId}`);
         return [];
       }
 
+      const customerId = (customer as any)._id;
+      console.log('🔍 OrderService - customerId (from customer._id):', customerId);
+      
+      // Query with BOTH customerId (correct) and userId (wrong data in old orders)
       const orders = await this.orderModel
-        .find({ customerId: (customer as any)._id })
+        .find({ 
+          $or: [
+            { customerId: new Types.ObjectId(customerId) },
+            { customerId: new Types.ObjectId(userId) }
+          ]
+        })
         .populate('restaurantId', 'name address phone imageUrl')
         .populate('driverId', 'name phone vehicleType licensePlate')
         .sort({ createdAt: -1 })
         .lean();
+      
+      console.log('🔍 OrderService - Found orders count:', orders.length);
+      if (orders.length > 0) {
+        console.log('🔍 OrderService - First order customerId:', orders[0].customerId);
+      }
 
-      // debug removed
+      console.log('🔍 OrderService: Found orders for customer:', orders.length);
+      if (orders.length > 0) {
+        console.log('🔍 OrderService: First order:', {
+          _id: orders[0]._id,
+          code: orders[0].code,
+          status: orders[0].status,
+          createdAt: (orders[0] as any).createdAt
+        });
+      }
       
       // Transform the data to match frontend expectations
       const transformedOrders = orders.map((order: any) => ({
         ...order,
         _id: order._id,
-        orderCode: order.orderCode || `ORD${order._id.toString().slice(-8).toUpperCase()}`,
+        orderCode: order.code || order.orderCode || `ORD${order._id.toString().slice(-8).toUpperCase()}`,
+        // Map recipient info from deliveryAddress to root level for frontend
+        recipientName: order.deliveryAddress?.recipientName || '',
+        recipientPhonePrimary: order.deliveryAddress?.recipientPhone || '',
         restaurantId: {
           _id: order.restaurantId._id,
           name: order.restaurantId.name || 'Nhà hàng',
@@ -319,19 +338,111 @@ export class OrderService {
     return order;
   }
 
+  async updateOrderStatus(orderId: string, updateData: any) {
+    // Special handling for cancellation - reset driverId to null
+    const updatePayload: any = { ...updateData };
+    if (updateData.status === 'cancelled' && updateData.driverId === null) {
+      updatePayload.driverId = null;
+      updatePayload.assignedAt = null;
+    }
+
+    const updatedOrder = await this.orderModel.findByIdAndUpdate(
+      orderId,
+      { 
+        $set: updatePayload,
+        $push: {
+          trackingHistory: {
+            status: updateData.status,
+            timestamp: new Date(),
+            note: this.getStatusNote(updateData.status),
+            updatedBy: 'driver'
+          }
+        }
+      },
+      { new: true }
+    ).populate('customerId', 'name phone email')
+     .populate('restaurantId', 'name address phone')
+     .populate('driverId', 'name phone');
+
+    if (!updatedOrder) {
+      throw new NotFoundException('Order not found');
+    }
+
+    // If order is cancelled, update driver status back to available
+    if (updateData.status === 'cancelled' && updateData.driverId === null) {
+      try {
+        await this.driverModel.findByIdAndUpdate(updatedOrder.driverId, {
+          $set: { 
+            status: 'available',
+            currentOrderId: null,
+            currentOrderStartedAt: null
+          },
+          $inc: { activeOrdersCount: -1 }
+        });
+      } catch (err) {
+        console.error('Failed to update driver status after cancellation:', err);
+      }
+    }
+
+    // TÌM TÀI XẾ KHI ĐƠN HÀNG SẴN SÀNG GIAO
+    if (updateData.status === 'ready') {
+      try {
+        this.logger.log(`Order ${orderId} is ready - starting driver assignment`);
+        
+        // Thêm vào Redis queue để tìm tài xế
+        await this.redisService.addPendingOrder(orderId);
+        this.logger.log(`Order ${orderId} added to pending orders queue for driver assignment`);
+        
+        // Trigger smart assignment ngay lập tức
+        await this.smartDriverAssignmentService.processPendingOrders();
+        
+      } catch (error) {
+        this.logger.error(`Failed to start driver assignment for order ${orderId}:`, error);
+      }
+    }
+
+    return updatedOrder;
+  }
+
+  private getStatusNote(status: string): string {
+    const statusNotes = {
+      'picking_up': 'Tài xế đã nhận đơn và đang đến lấy hàng',
+      'arrived_at_restaurant': 'Tài xế đã đến nhà hàng',
+      'picked_up': 'Tài xế đã lấy đơn hàng',
+      'arrived_at_customer': 'Tài xế đã đến vị trí giao hàng',
+      'delivered': 'Đơn hàng đã giao thành công',
+      'cancelled': 'Đơn hàng đã bị hủy'
+    };
+    return statusNotes[status] || 'Trạng thái đơn hàng đã được cập nhật';
+  }
+
   async findAvailableOrders(limit = 50) {
     // Orders available for drivers to accept: ready for pickup, no driver assigned
     const docs = await this.orderModel
-      .find({ status: 'ready', driverId: { $exists: false } })
-      .sort({ createdAt: 1 })
+      .find({ 
+        status: 'ready', 
+        $or: [{ driverId: null }, { driverId: { $exists: false } }]
+      })
+      .populate('restaurantId', 'name address coordinates')
+      .sort({ createdAt: -1 })
       .limit(limit)
       .lean();
     return docs.map((d: any) => ({
       id: String(d._id),
+      orderCode: d.code || `#${d._id.toString().slice(-6)}`,
       restaurantId: String(d.restaurantId),
+      restaurantName: d.restaurantId?.name || 'Nhà hàng',
+      restaurantAddress: d.restaurantId?.address || '',
+      restaurantLat: d.restaurantCoordinates?.latitude || d.restaurantId?.coordinates?.latitude,
+      restaurantLng: d.restaurantCoordinates?.longitude || d.restaurantId?.coordinates?.longitude,
+      customerName: d.deliveryAddress?.recipientName || 'Khách hàng',
+      customerAddress: d.deliveryAddress?.addressLine || '',
+      customerLat: d.deliveryAddress?.latitude,
+      customerLng: d.deliveryAddress?.longitude,
       status: d.status,
-      total: d.total,
-      deliveryFee: d.deliveryFee,
+      total: d.finalTotal || d.total || 0,
+      deliveryFee: d.deliveryFee || 0,
+      tip: d.driverTip || 0,
       createdAt: d.createdAt,
     }));
   }
@@ -360,9 +471,31 @@ export class OrderService {
     const driver = await this.driverModel.findOne({ userId: new Types.ObjectId(driverUserId) }).lean();
     if (!driver) throw new NotFoundException('Driver not found');
 
+    const driverId = (driver as any)._id;
+    const now = new Date();
+
+    // Update order with tracking history
     const updated = await this.orderModel.findOneAndUpdate(
-      { _id: new Types.ObjectId(orderId), status: 'ready', driverId: { $exists: false } },
-      { $set: { status: 'picking_up', driverId: (driver as any)._id, assignedAt: new Date() } },
+      { 
+        _id: new Types.ObjectId(orderId), 
+        status: 'ready',
+        $or: [{ driverId: null }, { driverId: { $exists: false } }]
+      },
+      { 
+        $set: { 
+          status: 'picking_up', 
+          driverId: driverId, 
+          assignedAt: now 
+        },
+        $push: {
+          trackingHistory: {
+            status: 'picking_up',
+            timestamp: now,
+            note: 'Tài xế đã nhận đơn và đang đến lấy hàng',
+            updatedBy: 'driver'
+          }
+        }
+      },
       { new: true }
     ).lean();
 
@@ -370,6 +503,20 @@ export class OrderService {
       const e: any = new Error('Order not available or already assigned');
       e.status = 400;
       throw e;
+    }
+
+    // Update driver status to "delivering"
+    try {
+      await this.driverModel.findByIdAndUpdate(driverId, {
+        $set: { 
+          status: 'delivering',
+          currentOrderId: updated._id,
+          currentOrderStartedAt: now
+        },
+        $inc: { activeOrdersCount: 1 }
+      });
+    } catch (err) {
+      console.error('Failed to update driver status:', err);
     }
 
     // Realtime notifications (minimal status to driver/restaurant rooms)
@@ -408,7 +555,7 @@ export class OrderService {
     }
 
     // Use existing updateOrderStatus to ensure settlement & teardown happen
-    const updated = await this.updateOrderStatus(orderId, 'delivered' as any, String((driver as any)._id));
+    const updated = await this.updateOrderStatus(orderId, { status: 'delivered', driverId: String((driver as any)._id) });
     try {
       (this.orderRealtime as any).emitOrderStatusChangedMinimal?.({
         driverId: String((driver as any)._id),
@@ -423,127 +570,6 @@ export class OrderService {
     return updated;
   }
 
-  async updateOrderStatus(orderId: string, status: OrderStatus, driverId?: string) {
-    const updateData: any = { status };
-    
-    if (driverId) {
-      updateData.driverId = new Types.ObjectId(driverId);
-    }
-
-    if (status === OrderStatus.DELIVERED) {
-      updateData.actualDeliveryTime = new Date();
-    }
-
-    // Add tracking history entry
-    const trackingEntry = {
-      status: status,
-      timestamp: new Date(),
-      note: this.getStatusNote(status),
-      updatedBy: 'restaurant'
-    };
-
-    updateData.$push = { trackingHistory: trackingEntry };
-
-    const updatedOrder = await this.orderModel.findByIdAndUpdate(
-      orderId,
-      updateData,
-      { new: true }
-    ).populate('customerId', 'name phone')
-     .populate('restaurantId', 'name address')
-     .populate('driverId', 'name phone');
-
-    if (updatedOrder) {
-      // Notify customer about order status update
-      this.orderRealtime.notifyCustomer(
-        String(updatedOrder.customerId._id),
-        orderId,
-        status,
-        updatedOrder
-      );
-
-      // Also notify restaurant and order room (v1) so any order subscribers update
-      try {
-        this.notificationGateway.notifyOrderUpdate(
-          String((updatedOrder as any).restaurantId?._id || updatedOrder.restaurantId),
-          String(updatedOrder._id),
-          String(status)
-        );
-      } catch {}
-
-      // If terminal state, handle settlement and teardown
-      if (status === OrderStatus.DELIVERED || status === OrderStatus.CANCELLED) {
-        if (status === OrderStatus.DELIVERED) {
-          try {
-            // Settle minimal wallets: restaurant gets net (total - commission), driver gets deliveryFee
-            const order: any = updatedOrder;
-            const restaurantId = order.restaurantId?._id || order.restaurantId;
-            const driverIdObj = order.driverId?._id || order.driverId;
-
-            // Load restaurant to get commissionRate & wallet
-            const restaurant = await this.restaurantModel.findById(restaurantId);
-            if (restaurant) {
-              const commissionRate = Math.max(0, Math.min(1, Number((restaurant as any).commissionRate ?? 0.15)));
-              const commission = Math.round(Number(order.total || 0) * commissionRate);
-              const netToRestaurant = Math.max(0, Math.round(Number(order.total || 0) - commission));
-              await this.restaurantModel.updateOne(
-                { _id: restaurant._id },
-                { 
-                  $inc: { walletBalance: netToRestaurant, totalRevenue: Number(order.total || 0) },
-                }
-              );
-              // Append wallet transaction for restaurant (credit)
-              try {
-                // dynamic import to avoid circular deps
-                const { WalletTransaction } = require('../wallet/schemas/wallet-transaction.schema');
-                const { getModelToken } = require('@nestjs/mongoose');
-                const token = getModelToken(WalletTransaction.name);
-                const model = (this as any).moduleRef?.get?.(token) || null;
-                if (model?.create) {
-                  await model.create({ userType: 'restaurant', userId: restaurant._id, type: 'credit', amount: netToRestaurant, orderId: order._id, createdAt: new Date() });
-                }
-              } catch {}
-            }
-
-            // Credit driver delivery fee
-            if (driverIdObj) {
-              await this.driverModel.updateOne(
-                { _id: driverIdObj },
-                { $inc: { walletBalance: Number(order.deliveryFee || 0), ordersCompleted: 1 } }
-              );
-              // Append wallet transaction for driver (credit)
-              try {
-                const { WalletTransaction } = require('../wallet/schemas/wallet-transaction.schema');
-                const { getModelToken } = require('@nestjs/mongoose');
-                const token = getModelToken(WalletTransaction.name);
-                const model = (this as any).moduleRef?.get?.(token) || null;
-                if (model?.create) {
-                  await model.create({ userType: 'driver', userId: driverIdObj, type: 'credit', amount: Number(order.deliveryFee || 0), orderId: order._id, createdAt: new Date() });
-                }
-              } catch {}
-            }
-          } catch (e) {
-            this.logger?.error?.('Settlement update failed', e);
-          }
-        }
-        await this.orderRealtime.teardownOrder(orderId);
-        this.orderRealtime.incrementOrdersMetric(status === OrderStatus.DELIVERED ? 'completed' : 'cancelled');
-      }
-
-      // Emit minimal status event to driver and restaurant rooms for realtime UI
-      try {
-        (this.orderRealtime as any).emitOrderStatusChangedMinimal?.({
-          driverId: updatedOrder.driverId ? String((updatedOrder as any).driverId?._id || updatedOrder.driverId) : null,
-          restaurantId: String((updatedOrder as any).restaurantId?._id || updatedOrder.restaurantId),
-          orderId: String(updatedOrder._id),
-          status: String(status),
-          updatedAt: new Date().toISOString(),
-        });
-      } catch {}
-    }
-
-    return updatedOrder;
-  }
-
   // Timeout handler to remove driver and reassign next candidate
   async handleDriverTimeout(orderId: string, driverId: string) {
     try {
@@ -556,18 +582,6 @@ export class OrderService {
       // eslint-disable-next-line no-console
       console.warn('Driver timeout handling failed', e?.message || e);
     }
-  }
-
-  private getStatusNote(status: OrderStatus): string {
-    const statusNotes = {
-      [OrderStatus.PENDING]: 'Đơn hàng đang chờ xác nhận',
-      [OrderStatus.CONFIRMED]: 'Đơn hàng đã được xác nhận',
-      [OrderStatus.PREPARING]: 'Đơn hàng đang được chuẩn bị',
-      [OrderStatus.READY]: 'Đơn hàng đã sẵn sàng giao',
-      [OrderStatus.DELIVERED]: 'Đơn hàng đã được giao thành công',
-      [OrderStatus.CANCELLED]: 'Đơn hàng đã bị hủy'
-    };
-    return statusNotes[status] || 'Trạng thái đã được cập nhật';
   }
 
   async getOrderStats(restaurantId?: string) {
@@ -626,6 +640,11 @@ export class OrderService {
     return restaurant;
   }
 
+  // Pass-through to CustomerService to fetch customer by user ID for controllers needing it
+  async findCustomerByUserId(userId: string) {
+    return this.customerService.getCustomerByUserId(userId);
+  }
+
   async cancelOrder(orderId: string, customerId: string) {
     const order = await this.orderModel.findOne({
       _id: new Types.ObjectId(orderId),
@@ -652,17 +671,30 @@ export class OrderService {
 
     await order.save();
 
-    // Notify restaurant about order cancellation
-    this.notificationGateway.notifyOrderCancellation(
-      String(order.restaurantId),
-      {
-        id: order._id,
-        customerId: customerId,
-        total: order.finalTotal,
-        items: order.items.length,
-        cancelledAt: new Date()
-      }
-    );
+    // Notify restaurant and driver about order cancellation
+    try {
+      // Notify restaurant detailed cancel event
+      this.notificationGateway.notifyOrderCancellation(
+        String(order.restaurantId),
+        {
+          id: order._id,
+          customerId: customerId,
+          total: order.finalTotal,
+          items: order.items.length,
+          cancelledAt: new Date()
+        }
+      );
+      // Canonical status update to restaurant room
+      this.notificationGateway.notifyOrderUpdate(String(order.restaurantId), String(order._id), 'cancelled');
+      // Minimal status to both restaurant and driver rooms
+      (this.orderRealtime as any).emitOrderStatusChangedMinimal?.({
+        restaurantId: String(order.restaurantId),
+        driverId: order.driverId ? String(order.driverId) : null,
+        orderId: String(order._id),
+        status: 'cancelled',
+        updatedAt: new Date().toISOString(),
+      });
+    } catch {}
 
     return {
       success: true,

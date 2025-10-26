@@ -115,12 +115,28 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
                 if (response.ok) {
                   const userData = await response.json();
+                  // Ensure role cookie for middleware guards (fallback if server didn't set it)
+                  if (typeof document !== 'undefined' && userData?.role) {
+                    try {
+                      if (userData.role === 'admin' || userData.role === UserRole.ADMIN) {
+                        document.cookie = `admin_token=1; path=/; SameSite=Lax`;
+                      }
+                    } catch {}
+                  }
                   dispatch({ type: 'SET_USER', payload: userData });
+                } else if (response.status === 401) {
+                  // 401 is expected when not logged in, don't treat as error
+                  dispatch({ type: 'SET_USER', payload: null });
                 } else {
+                  // Other errors should be logged
+                  console.error('Auth check failed with status:', response.status);
                   dispatch({ type: 'SET_USER', payload: null });
                 }
               } catch (error) {
-                console.error('Auth check failed:', error);
+                // Don't log 401 errors as they are expected when not logged in
+                if (error instanceof Error && !error.message.includes('401')) {
+                  console.error('Auth check failed:', error);
+                }
                 dispatch({ type: 'SET_USER', payload: null });
               }
             } catch (error) {

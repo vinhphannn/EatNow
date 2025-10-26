@@ -5,15 +5,25 @@ import { Order, OrderDocument } from '../order/schemas/order.schema';
 import { FilterQuery, Model, Types } from 'mongoose';
 import { Restaurant, RestaurantDocument } from './schemas/restaurant.schema';
 import { Category, CategoryDocument } from './schemas/category.schema';
+import { RestaurantCategory, RestaurantCategoryDocument } from './schemas/restaurant-category.schema';
 import { Item, ItemDocument } from './schemas/item.schema';
+import { ItemOptionSeparate, ItemOptionSeparateDocument } from './schemas/item-option-separate.schema';
+import { OptionChoiceSeparate, OptionChoiceSeparateDocument } from './schemas/option-choice-separate.schema';
+import { ItemOptionSeparateService } from './item-option-separate.service';
+import { OptionChoiceSeparateService } from './option-choice-separate.service';
 
 @Injectable()
 export class RestaurantService {
   constructor(
     @InjectModel(Restaurant.name) private readonly restaurantModel: Model<RestaurantDocument>,
     @InjectModel(Category.name) private readonly categoryModel: Model<CategoryDocument>,
+    @InjectModel(RestaurantCategory.name) private readonly restaurantCategoryModel: Model<RestaurantCategoryDocument>,
     @InjectModel(Item.name) private readonly itemModel: Model<ItemDocument>,
+    @InjectModel(ItemOptionSeparate.name) private readonly itemOptionModel: Model<ItemOptionSeparateDocument>,
+    @InjectModel(OptionChoiceSeparate.name) private readonly optionChoiceModel: Model<OptionChoiceSeparateDocument>,
     @InjectModel(Order.name) private readonly orderModel: Model<OrderDocument>,
+    private readonly itemOptionService: ItemOptionSeparateService,
+    private readonly optionChoiceService: OptionChoiceSeparateService,
   ) {}
 
   // Restaurants
@@ -33,7 +43,75 @@ export class RestaurantService {
       longitude: payload.longitude,
       status: 'active',
     });
+
+    // Create default categories for the new restaurant
+    await this.createDefaultCategoriesForRestaurant(doc._id);
+
     return { id: String(doc._id), name: doc.name, status: doc.status, ownerUserId: doc.ownerUserId };
+  }
+
+  // Create default categories for a new restaurant
+  private async createDefaultCategoriesForRestaurant(restaurantId: Types.ObjectId) {
+    const defaultCategories = [
+      {
+        restaurantId: restaurantId,
+        name: 'Món chính',
+        slug: `mon-chinh-${restaurantId}`,
+        description: 'Các món ăn chính của nhà hàng',
+        icon: '🍽️',
+        color: 'from-orange-400 to-red-500',
+        position: 1,
+        isActive: true
+      },
+      {
+        restaurantId: restaurantId,
+        name: 'Món thêm',
+        slug: `mon-them-${restaurantId}`,
+        description: 'Các món ăn kèm, món phụ',
+        icon: '🥗',
+        color: 'from-green-400 to-emerald-500',
+        position: 2,
+        isActive: true
+      },
+      {
+        restaurantId: restaurantId,
+        name: 'Giải khát',
+        slug: `giai-khat-${restaurantId}`,
+        description: 'Nước uống, đồ giải khát',
+        icon: '🥤',
+        color: 'from-blue-400 to-cyan-500',
+        position: 3,
+        isActive: true
+      },
+      {
+        restaurantId: restaurantId,
+        name: 'Đồ ăn vặt',
+        slug: `do-an-vat-${restaurantId}`,
+        description: 'Snack, đồ ăn vặt',
+        icon: '🍿',
+        color: 'from-yellow-400 to-orange-500',
+        position: 4,
+        isActive: true
+      },
+      {
+        restaurantId: restaurantId,
+        name: 'Tráng miệng',
+        slug: `trang-mieng-${restaurantId}`,
+        description: 'Bánh ngọt, kem, chè',
+        icon: '🍰',
+        color: 'from-pink-400 to-purple-500',
+        position: 5,
+        isActive: true
+      }
+    ];
+
+    try {
+      await this.categoryModel.insertMany(defaultCategories);
+      console.log(`✅ Created default categories for restaurant ${restaurantId}`);
+    } catch (error) {
+      console.error(`❌ Error creating default categories for restaurant ${restaurantId}:`, error.message);
+      // Don't throw error to avoid breaking restaurant creation
+    }
   }
 
   async findAllRestaurants(filter?: { ownerUserId?: any; status?: string }) {
@@ -91,40 +169,106 @@ export class RestaurantService {
     }));
   }
 
-  async findAllPublicCategories() {
-    // Sử dụng GlobalCategory thay vì Category riêng lẻ
-    const globalCategoryModel = this.restaurantModel.db.model('GlobalCategory');
+  async getFeaturedCollections() {
+    // Import FeaturedCollection model dynamically
+    const featuredCollectionModel = this.restaurantModel.db.model('FeaturedCollection');
     
-    const categories = await globalCategoryModel
-      .find({ isActive: true, isVisible: true }, { 
-        name: 1, 
-        position: 1, 
-        icon: 1, 
-        slug: 1, 
-        isFeatured: 1,
-        restaurantCount: 1,
-        popularityScore: 1 
+    const collections = await featuredCollectionModel
+      .find({
+        isActive: true,
+        $and: [
+          {
+            $or: [
+              { validFrom: { $exists: false } },
+              { validFrom: { $lte: new Date() } }
+            ]
+          },
+          {
+            $or: [
+              { validUntil: { $exists: false } },
+              { validUntil: { $gte: new Date() } }
+            ]
+          }
+        ]
       })
-      .sort({ position: 1, popularityScore: -1 })
+      .sort({ position: 1, createdAt: -1 })
       .lean();
 
-    return categories.map((cat: any) => ({
-      id: String(cat._id),
-      name: cat.name,
-      position: cat.position,
-      icon: cat.icon,
-      slug: cat.slug,
-      isFeatured: cat.isFeatured,
-      restaurantCount: cat.restaurantCount,
-      popularityScore: cat.popularityScore,
-    }));
+    const result: any[] = [];
+    for (const c of collections) {
+      const limit = 6; // default display size
+      const main = (c as any).mainCriteria || 'highRated';
+      let query = this.restaurantModel.find({ status: 'active' }, {
+        name: 1,
+        description: 1,
+        imageUrl: 1,
+        rating: 1,
+        deliveryFee: 1,
+        isOpen: 1,
+      });
+      if (main === 'highRated') {
+        query = query.sort({ rating: -1, createdAt: -1 });
+      } else if (main === 'bestSellers') {
+        // Fallback: use reviewCount/popularity if available
+        query = query.sort({ popularityScore: -1, reviewCount: -1, createdAt: -1 } as any);
+      } else if (main === 'trending') {
+        query = query.sort({ updatedAt: -1, createdAt: -1 });
+      } else if (main === 'new') {
+        query = query.sort({ createdAt: -1 });
+      } else if (main === 'discount') {
+        // Placeholder: no discount field; fallback to recent active
+        query = query.sort({ createdAt: -1 });
+      } else {
+        query = query.sort({ createdAt: -1 });
+      }
+      const restaurants = await query.limit(limit).lean();
+      result.push({
+        _id: c._id,
+        name: c.name,
+        description: c.description,
+        subtitle: c.subtitle,
+        layout: c.layout,
+        color: c.color,
+        isFeatured: c.isFeatured,
+        imageUrl: (c as any).imageUrl,
+        mainCriteria: main,
+        restaurants: restaurants.map((r: any) => ({
+          _id: r._id,
+          name: r.name,
+          description: r.description,
+          imageUrl: r.imageUrl,
+          rating: r.rating,
+          deliveryFee: r.deliveryFee,
+          isOpen: r.isOpen,
+        }))
+      });
+    }
+    return result;
   }
 
   async findOneByOwnerUserId(ownerUserId: any) {
     const id = String(ownerUserId);
     const d = await this.restaurantModel.findOne({ ownerUserId: Types.ObjectId.isValid(id) ? new Types.ObjectId(id) : id }).lean();
     if (!d) return null;
-    return { id: String(d._id), name: d.name, status: d.status, ownerUserId: (d as any).ownerUserId, createdAt: (d as any).createdAt, description: (d as any).description, address: (d as any).address, openingHours: (d as any).openingHours, openTime: (d as any).openTime, closeTime: (d as any).closeTime, openDays: (d as any).openDays, latitude: (d as any).latitude, longitude: (d as any).longitude };
+    return { 
+      id: String(d._id), 
+      name: d.name, 
+      status: d.status, 
+      ownerUserId: (d as any).ownerUserId, 
+      createdAt: (d as any).createdAt, 
+      description: (d as any).description, 
+      address: (d as any).address, 
+      openingHours: (d as any).openingHours, 
+      openTime: (d as any).openTime, 
+      closeTime: (d as any).closeTime, 
+      openDays: (d as any).openDays, 
+      latitude: (d as any).latitude, 
+      longitude: (d as any).longitude,
+      isOpen: (d as any).isOpen,
+      isAcceptingOrders: (d as any).isAcceptingOrders,
+      isDeliveryAvailable: (d as any).isDeliveryAvailable,
+      isPickupAvailable: (d as any).isPickupAvailable
+    };
   }
 
   async getRestaurant(id: string) {
@@ -171,10 +315,38 @@ export class RestaurantService {
     };
   }
 
-  async updateRestaurant(id: string, payload: { name?: string; status?: string; banReason?: string; description?: string; address?: string; openingHours?: string; openTime?: string; closeTime?: string; openDays?: number[]; latitude?: number; longitude?: number }) {
+  async updateRestaurant(id: string, payload: { name?: string; status?: string; banReason?: string; description?: string; address?: string; openingHours?: string; openTime?: string; closeTime?: string; openDays?: number[]; latitude?: number; longitude?: number; isOpen?: boolean; isAcceptingOrders?: boolean; isDeliveryAvailable?: boolean; isPickupAvailable?: boolean }) {
+    // Enforce: cannot set active without a valid address
+    if (payload?.status === 'active') {
+      const current = await this.restaurantModel.findById(id).lean();
+      const address = (payload.address ?? (current as any)?.address) || '';
+      if (!address || String(address).trim().length === 0) {
+        const e: any = new Error('Không thể kích hoạt: nhà hàng thiếu địa chỉ');
+        e.status = 400;
+        throw e;
+      }
+    }
     const d = await this.restaurantModel.findByIdAndUpdate(id, { $set: payload }, { new: true }).lean();
     if (!d) throw new NotFoundException('Restaurant not found');
-    return { id: String(d._id), name: d.name, status: d.status, banReason: (d as any).banReason, ownerUserId: (d as any).ownerUserId, description: (d as any).description, address: (d as any).address, openingHours: (d as any).openingHours, openTime: (d as any).openTime, closeTime: (d as any).closeTime, openDays: (d as any).openDays, latitude: (d as any).latitude, longitude: (d as any).longitude };
+    return { 
+      id: String(d._id), 
+      name: d.name, 
+      status: d.status, 
+      banReason: (d as any).banReason, 
+      ownerUserId: (d as any).ownerUserId, 
+      description: (d as any).description, 
+      address: (d as any).address, 
+      openingHours: (d as any).openingHours, 
+      openTime: (d as any).openTime, 
+      closeTime: (d as any).closeTime, 
+      openDays: (d as any).openDays, 
+      latitude: (d as any).latitude, 
+      longitude: (d as any).longitude,
+      isOpen: (d as any).isOpen,
+      isAcceptingOrders: (d as any).isAcceptingOrders,
+      isDeliveryAvailable: (d as any).isDeliveryAvailable,
+      isPickupAvailable: (d as any).isPickupAvailable
+    };
   }
 
   async deleteRestaurant(id: string) {
@@ -188,33 +360,179 @@ export class RestaurantService {
   async createCategory(restaurantId: string, payload: { name: string; position?: number }) {
     const rest = await this.restaurantModel.exists({ _id: restaurantId });
     if (!rest) throw new NotFoundException('Restaurant not found');
-    const doc = await this.categoryModel.create({ restaurantId, name: payload.name, position: payload.position ?? 0 });
+    const doc = await this.restaurantCategoryModel.create({ 
+      restaurantId: new Types.ObjectId(restaurantId), 
+      name: payload.name, 
+      slug: payload.name.toLowerCase().replace(/\s+/g, '-'),
+      position: payload.position ?? 0 
+    });
     return { id: doc._id, restaurantId: doc.restaurantId, name: doc.name, position: doc.position };
   }
 
   async listCategories(restaurantId: string) {
-    const docs = await this.categoryModel.find({ restaurantId }, { name: 1, position: 1, createdAt: 1 }).sort({ position: 1, createdAt: 1 }).lean();
-    return docs.map((d: any) => ({ id: d._id, restaurantId: d.restaurantId, name: d.name, position: d.position, createdAt: d.createdAt }));
+    console.log('Loading restaurant categories for restaurant:', restaurantId);
+    console.log('RestaurantId type:', typeof restaurantId);
+    
+    // Convert string to ObjectId for query
+    const restaurantObjectId = new Types.ObjectId(restaurantId);
+    console.log('Restaurant ObjectId:', restaurantObjectId);
+    
+    const docs = await this.restaurantCategoryModel.find({ restaurantId: restaurantObjectId }, { name: 1, position: 1, createdAt: 1 }).sort({ position: 1, createdAt: 1 }).lean();
+    console.log('Found restaurant categories:', docs.length);
+    console.log('Raw docs:', docs);
+    
+    const result = docs.map((d: any) => ({ id: d._id, restaurantId: d.restaurantId, name: d.name, position: d.position, createdAt: d.createdAt }));
+    console.log('Mapped restaurant categories:', result);
+    return result;
   }
 
   async updateCategory(id: string, payload: { name?: string; position?: number }) {
-    const d = await this.categoryModel.findByIdAndUpdate(id, { $set: payload }, { new: true }).lean();
-    if (!d) throw new NotFoundException('Category not found');
+    const d = await this.restaurantCategoryModel.findByIdAndUpdate(id, { $set: payload }, { new: true }).lean();
+    if (!d) throw new NotFoundException('Restaurant category not found');
     return { id: d._id, restaurantId: (d as any).restaurantId, name: d.name, position: d.position };
   }
 
   async deleteCategory(id: string) {
-    await this.categoryModel.findByIdAndDelete(id);
+    await this.restaurantCategoryModel.findByIdAndDelete(id);
     await this.itemModel.updateMany({ categoryId: id }, { $unset: { categoryId: 1 } });
     return { ok: true };
   }
 
   // Items
-  async createItem(restaurantId: string, payload: { name: string; price: number; type: 'food'|'drink'; categoryId?: string; description?: string; imageUrl?: string; isActive?: boolean; position?: number; quantityRemaining?: number }) {
+  async createItem(restaurantId: string, payload: { 
+    name: string; 
+    basePrice: number;
+    categoryId?: string; 
+    subCategoryId?: string;
+    description?: string; 
+    imageUrl?: string; 
+    isActive?: boolean; 
+    position?: number; 
+    preparationTime?: number;
+    options?: any[];
+  }) {
     const rest = await this.restaurantModel.exists({ _id: restaurantId });
     if (!rest) throw new NotFoundException('Restaurant not found');
-    const doc = await this.itemModel.create({ restaurantId, ...payload });
-    return { id: doc._id };
+
+    // Validate item name
+    if (!payload.name || payload.name.trim() === '') {
+      throw new Error('Item name cannot be empty');
+    }
+
+    // Validate base price
+    if (!payload.basePrice || payload.basePrice <= 0) {
+      throw new Error('Item base price must be greater than 0');
+    }
+
+    // Validate preparation time
+    if (payload.preparationTime && (payload.preparationTime < 0 || payload.preparationTime > 300)) {
+      throw new Error('Preparation time must be between 0 and 300 minutes');
+    }
+    
+    // Calculate final price (basePrice + options default prices)
+    let finalPrice = payload.basePrice;
+    if (payload.options && payload.options.length > 0) {
+      payload.options.forEach(option => {
+        if (option.choices && option.choices.length > 0) {
+          option.choices.forEach(choice => {
+            if (choice.isDefault) {
+              finalPrice += choice.price || 0;
+            }
+          });
+        }
+      });
+    }
+    
+    console.log('🚀 Creating item with separate collections:', {
+      restaurantId,
+      basePrice: payload.basePrice,
+      finalPrice,
+      optionsCount: payload.options?.length || 0
+    });
+
+    // Create item first (without options)
+    const itemData = { 
+      restaurantId, 
+      basePrice: payload.basePrice,
+      price: finalPrice,
+      name: payload.name,
+      description: payload.description,
+      imageUrl: payload.imageUrl,
+      categoryId: payload.categoryId,
+      subCategoryId: payload.subCategoryId,
+      isActive: payload.isActive,
+      position: payload.position,
+      preparationTime: payload.preparationTime
+    };
+
+    try {
+      console.log('📝 Creating item:', itemData);
+      const item = await this.itemModel.create(itemData);
+      console.log('✅ Item created, ID:', item._id);
+
+      // Create options and choices in separate collections
+      if (payload.options && payload.options.length > 0) {
+        console.log('📝 Creating options and choices...');
+        console.log('📝 Options payload:', JSON.stringify(payload.options, null, 2));
+        console.log('📝 Item ID for options:', item._id.toString());
+        
+        for (const optionData of payload.options) {
+          // Validate option
+          if (!optionData.name || optionData.name.trim() === '') {
+            throw new Error(`Option name cannot be empty`);
+          }
+          if (!optionData.type || !['single', 'multiple'].includes(optionData.type)) {
+            throw new Error(`Option type must be 'single' or 'multiple'`);
+          }
+          if (!optionData.choices || optionData.choices.length === 0) {
+            throw new Error(`Option "${optionData.name}" must have at least one choice`);
+          }
+
+          // Create option
+          const optionCreateData = {
+            itemId: item._id.toString(),
+            name: optionData.name.trim(),
+            type: optionData.type,
+            required: Boolean(optionData.required),
+            position: Number(optionData.position) || 0,
+            isActive: Boolean(optionData.isActive !== false)
+          };
+          console.log('📝 Creating option with data:', optionCreateData);
+          const option = await this.itemOptionService.create(optionCreateData);
+          console.log('✅ Option created:', (option as any)._id);
+
+          // Create choices
+          for (const choiceData of optionData.choices) {
+            // Validate choice
+            if (!choiceData.name || choiceData.name.trim() === '') {
+              throw new Error(`Choice name cannot be empty in option "${optionData.name}"`);
+            }
+            if (typeof choiceData.price !== 'number' || choiceData.price < 0) {
+              throw new Error(`Choice "${choiceData.name}" price must be a non-negative number`);
+            }
+
+            const choiceCreateData = {
+              optionId: (option as any)._id.toString(),
+              name: choiceData.name.trim(),
+              price: Number(choiceData.price) || 0,
+              isDefault: Boolean(choiceData.isDefault),
+              isActive: Boolean(choiceData.isActive !== false),
+              position: Number(choiceData.position) || 0
+            };
+            console.log('📝 Creating choice with data:', choiceCreateData);
+            const choice = await this.optionChoiceService.create(choiceCreateData);
+            console.log('✅ Choice created:', (choice as any)._id);
+          }
+          console.log(`✅ Created ${optionData.choices.length} choices for option "${optionData.name}"`);
+        }
+      }
+
+      console.log('🎉 Item with options created successfully!');
+      return { id: item._id };
+    } catch (error) {
+      console.error('❌ Error creating item:', error);
+      throw error;
+    }
   }
 
   async listItems(restaurantId: string, filter?: { type?: 'food'|'drink'; categoryId?: string; isActive?: string; sortBy?: 'position'|'createdAt'|'price'; order?: 'asc'|'desc'; limit?: string }) {
@@ -231,7 +549,7 @@ export class RestaurantService {
     sort[sortField] = sortOrder;
     if (sortField !== 'createdAt') sort['createdAt'] = 1;
     let qy = this.itemModel
-      .find(q, { name: 1, price: 1, type: 1, isActive: 1, categoryId: 1, position: 1, createdAt: 1, quantityRemaining: 1, imageUrl: 1, imageId: 1, description: 1, rating: 1, reviewCount: 1, popularityScore: 1 })
+      .find(q, { name: 1, price: 1, basePrice: 1, type: 1, isActive: 1, categoryId: 1, subCategoryId: 1, position: 1, createdAt: 1, quantityRemaining: 1, imageUrl: 1, imageId: 1, description: 1, rating: 1, reviewCount: 1, popularityScore: 1, preparationTime: 1 })
       .sort(sort);
     // Apply limit only when provided and valid (>0). Do not force default 1.
     const parsedLimit = Number(filter?.limit);
@@ -241,23 +559,58 @@ export class RestaurantService {
       qy = qy.limit(n);
     }
     const docs = await qy.lean();
-    return docs.map((d: any) => ({ 
-      id: d._id, 
-      name: d.name, 
-      price: d.price, 
-      type: d.type, 
-      isActive: d.isActive, 
-      categoryId: d.categoryId, 
-      position: d.position, 
-      createdAt: d.createdAt, 
-      quantityRemaining: d.quantityRemaining, 
-      imageUrl: d.imageUrl, 
-      imageId: d.imageId,
-      description: d.description,
-      rating: d.rating || 0,
-      reviewCount: d.reviewCount || 0,
-      popularityScore: d.popularityScore || 0
-    }));
+    
+    // Load options and choices for each item
+    const itemsWithOptions = await Promise.all(
+      docs.map(async (d: any) => {
+        const options = await this.itemOptionService.findAllByItemId(d._id.toString());
+        const optionsWithChoices = await Promise.all(
+          options.map(async (option) => {
+            const choices = await this.optionChoiceService.findAllByOptionId((option as any)._id.toString());
+            return {
+              id: (option as any)._id,
+              name: option.name,
+              type: option.type,
+              required: option.required,
+              position: option.position,
+              isActive: option.isActive,
+              choices: choices.map(choice => ({
+                id: (choice as any)._id,
+                name: choice.name,
+                price: choice.price,
+                isDefault: choice.isDefault,
+                isActive: choice.isActive,
+                position: choice.position
+              }))
+            };
+          })
+        );
+        
+        return { 
+          id: d._id, 
+          name: d.name, 
+          price: d.price, 
+          type: d.type, 
+          isActive: d.isActive, 
+          categoryId: d.categoryId, 
+          subCategoryId: d.subCategoryId, 
+          position: d.position, 
+          createdAt: d.createdAt, 
+          quantityRemaining: d.quantityRemaining, 
+          imageUrl: d.imageUrl, 
+          imageId: d.imageId, 
+          description: d.description, 
+          rating: d.rating || 0, 
+          reviewCount: d.reviewCount || 0, 
+          popularityScore: d.popularityScore || 0,
+          preparationTime: d.preparationTime,
+          basePrice: d.basePrice,
+          options: optionsWithChoices
+        };
+      })
+    );
+    
+    return itemsWithOptions;
   }
 
   async getItem(id: string) {
@@ -266,15 +619,141 @@ export class RestaurantService {
     return { id: d._id, restaurantId: (d as any).restaurantId, name: d.name, price: d.price, type: d.type, isActive: d.isActive, categoryId: (d as any).categoryId };
   }
 
-  async updateItem(id: string, payload: Partial<{ name: string; price: number; type: 'food'|'drink'; categoryId: string; description: string; imageUrl: string; isActive: boolean; position: number; quantityRemaining: number }>) {
-    const d = await this.itemModel.findByIdAndUpdate(id, { $set: payload }, { new: true }).lean();
+  async updateItem(id: string, payload: Partial<{ name: string; basePrice: number; type: 'food'|'drink'; categoryId: string; subCategoryId: string; description: string; imageUrl: string; isActive: boolean; position: number; preparationTime: number; options: any[] }>) {
+    const updateData: any = { ...payload };
+
+    // Remove options from updateData since we handle them separately
+    delete updateData.options;
+
+    // Calculate final price if basePrice or options are updated
+    if (payload.basePrice !== undefined || payload.options !== undefined) {
+      let finalPrice = payload.basePrice || 0;
+      
+      if (payload.options && payload.options.length > 0) {
+        payload.options.forEach(option => {
+          if (option.choices && option.choices.length > 0) {
+            option.choices.forEach(choice => {
+              if (choice.isDefault) {
+                finalPrice += choice.price || 0;
+              }
+            });
+          }
+        });
+      }
+      
+      updateData.price = finalPrice;
+    }
+
+    console.log('🔄 Updating item:', {
+      id,
+      updateData,
+      optionsCount: payload.options?.length || 0
+    });
+
+    // Update item first
+    const d = await this.itemModel.findByIdAndUpdate(id, { $set: updateData }, { new: true }).lean();
     if (!d) throw new NotFoundException('Item not found');
+
+    // Update options if provided
+    if (payload.options !== undefined) {
+      console.log('🔄 Updating options for item:', id);
+      
+      // Delete existing options and choices
+      await this.itemOptionService.deleteByItemId(id);
+      
+      // Create new options and choices
+      if (payload.options.length > 0) {
+        for (const optionData of payload.options) {
+          // Validate option
+          if (!optionData.name || optionData.name.trim() === '') {
+            throw new Error(`Option name cannot be empty`);
+          }
+          if (!optionData.type || !['single', 'multiple'].includes(optionData.type)) {
+            throw new Error(`Option type must be 'single' or 'multiple'`);
+          }
+          if (!optionData.choices || optionData.choices.length === 0) {
+            throw new Error(`Option "${optionData.name}" must have at least one choice`);
+          }
+
+          // Create option
+          const option = await this.itemOptionService.create({
+            itemId: id,
+            name: optionData.name.trim(),
+            type: optionData.type,
+            required: Boolean(optionData.required),
+            position: Number(optionData.position) || 0,
+            isActive: Boolean(optionData.isActive !== false)
+          });
+
+          // Create choices
+          for (const choiceData of optionData.choices) {
+            // Validate choice
+            if (!choiceData.name || choiceData.name.trim() === '') {
+              throw new Error(`Choice name cannot be empty in option "${optionData.name}"`);
+            }
+            if (typeof choiceData.price !== 'number' || choiceData.price < 0) {
+              throw new Error(`Choice "${choiceData.name}" price must be a non-negative number`);
+            }
+
+            await this.optionChoiceService.create({
+              optionId: (option as any)._id.toString(),
+              name: choiceData.name.trim(),
+              price: Number(choiceData.price) || 0,
+              isDefault: Boolean(choiceData.isDefault),
+              isActive: Boolean(choiceData.isActive !== false),
+              position: Number(choiceData.position) || 0
+            });
+          }
+        }
+      }
+      
+      console.log('✅ Options updated successfully');
+    }
+
     return { id: String(d._id), isActive: d.isActive } as any;
   }
 
   async deleteItem(id: string) {
+    // Delete options and choices first
+    await this.itemOptionService.deleteByItemId(id);
+    
+    // Then delete the item
     await this.itemModel.findByIdAndDelete(id);
     return { ok: true };
+  }
+
+  // Lấy tất cả items từ tất cả restaurants (cho search)
+  async findAllItems(options?: { limit?: number; skip?: number }) {
+    const limit = Math.max(0, Number(options?.limit ?? 20));
+    const skip = Math.max(0, Number(options?.skip ?? 0));
+    
+    const items = await this.itemModel
+      .find({ isActive: true })
+      .populate('restaurantId', 'name description imageUrl rating deliveryFee address')
+      .select('name description price imageUrl rating reviewCount restaurantId')
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .skip(skip)
+      .lean();
+
+    return items.map((item: any) => ({
+      id: String(item._id),
+      name: item.name,
+      description: item.description,
+      price: item.price,
+      imageUrl: item.imageUrl,
+      rating: item.rating || 0,
+      reviewCount: item.reviewCount || 0,
+      restaurant: {
+        _id: String(item.restaurantId._id),
+        name: item.restaurantId.name,
+        description: item.restaurantId.description,
+        imageUrl: item.restaurantId.imageUrl,
+        rating: item.restaurantId.rating,
+        deliveryFee: item.restaurantId.deliveryFee,
+        address: item.restaurantId.address
+      }
+    }));
   }
 
   // Dashboard stats (real data)
@@ -346,6 +825,63 @@ export class RestaurantService {
     };
   }
 
+  // Get today's stats for sidebar
+  async getTodayStats(restaurantId: string, userId: string) {
+    try {
+      // Verify restaurant ownership
+      const restaurant = await this.findRestaurantByOwnerId(userId);
+      if (!restaurant) {
+        throw new NotFoundException('Restaurant not found');
+      }
+
+      // Verify the restaurantId matches the user's restaurant
+      const userRestaurantId = (restaurant as any)._id?.toString();
+      if (userRestaurantId !== restaurantId) {
+        throw new NotFoundException('Restaurant not found');
+      }
+
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const endOfDay = new Date();
+      endOfDay.setHours(23, 59, 59, 999);
+
+      // Get today's orders
+      const todayOrders = await this.orderModel.find({
+        restaurantId: new Types.ObjectId(restaurantId),
+        createdAt: {
+          $gte: startOfDay,
+          $lte: endOfDay
+        }
+      }).lean();
+
+      // Calculate stats
+      const todayOrdersCount = todayOrders.length;
+      const todayRevenue = todayOrders.reduce((sum, order) => {
+        return sum + (order.finalTotal || order.total || 0);
+      }, 0);
+
+      // Get pending orders count
+      const pendingOrders = await this.orderModel.countDocuments({
+        restaurantId: new Types.ObjectId(restaurantId),
+        status: { $in: ['pending', 'confirmed', 'preparing'] }
+      });
+
+      return {
+        todayOrders: todayOrdersCount,
+        todayRevenue: todayRevenue,
+        pendingOrders: pendingOrders
+      };
+    } catch (error) {
+      console.error('Error getting today stats:', error);
+      return {
+        todayOrders: 0,
+        todayRevenue: 0,
+        pendingOrders: 0
+      };
+    }
+  }
+
   // Get recent orders for restaurant (now via OrderService in controller)
   async listOrdersByOwner(userId: string, opts: { page?: number; limit?: number; status?: string } = {}) {
     const restaurant = await this.findRestaurantByOwnerId(userId);
@@ -363,23 +899,51 @@ export class RestaurantService {
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
-        .populate('customerId', 'name email phone')
         .populate('driverId', 'name phone')
         .lean(),
       this.orderModel.countDocuments(query),
     ]);
 
     return {
-      data: items.map((o: any) => ({
-        _id: o._id,
-        orderCode: o.code || String(o._id),
-        customer: { name: (o.customerId as any)?.name, email: (o.customerId as any)?.email, phone: (o.customerId as any)?.phone },
+      data: items.map((o: any) => {
+        // Debug log để kiểm tra deliveryAddress
+        console.log('🔍 Order deliveryAddress:', {
+          _id: o._id,
+          deliveryAddress: o.deliveryAddress,
+          recipientName: o.deliveryAddress?.recipientName,
+          recipientPhone: o.deliveryAddress?.recipientPhone
+        });
+        
+        return {
+          _id: o._id,
+          orderCode: o.code || String(o._id),
+          // Thông tin người nhận từ deliveryAddress
+          customerId: { 
+            _id: o.customerId || '',
+            name: o.deliveryAddress?.recipientName || 'Chưa cập nhật', 
+            email: '', 
+            phone: o.deliveryAddress?.recipientPhone || 'Chưa cập nhật'
+          },
+        customer: { 
+          name: o.deliveryAddress?.recipientName || 'Chưa cập nhật', 
+          email: '', 
+          phone: o.deliveryAddress?.recipientPhone || 'Chưa cập nhật' 
+        },
         items: o.items,
         status: o.status,
+        total: o.total || 0,
         finalTotal: o.finalTotal || o.total || 0,
+        deliveryFee: o.deliveryFee || 0,
+        deliveryAddress: o.deliveryAddress,
+        recipientName: o.deliveryAddress?.recipientName,
+        recipientPhonePrimary: o.deliveryAddress?.recipientPhone,
+        purchaserPhone: o.purchaserPhone,
+        paymentMethod: o.paymentMethod,
         createdAt: o.createdAt,
+        updatedAt: o.updatedAt,
         driverId: o.driverId ? { _id: (o.driverId as any)._id, name: (o.driverId as any).name, phone: (o.driverId as any).phone } : undefined,
-      })),
+        };
+      }),
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) || 1 },
     };
   }
@@ -394,65 +958,34 @@ export class RestaurantService {
     const restaurant = await this.findRestaurantByOwnerId(userId);
     console.log('🔍 Get customers for user:', userId, 'restaurant found:', !!restaurant);
     
-    // If no restaurant found, still return mock data for testing
     if (!restaurant) {
-      console.log('⚠️ No restaurant found, returning mock customer data');
+      throw new Error('Restaurant not found for this user');
     }
 
-    // Mock data for now - in real implementation, get from orders
-    const mockCustomers = [
-      {
-        _id: '1',
-        name: 'Nguyễn Văn A',
-        email: 'nguyenvana@email.com',
-        phone: '0123456789',
-        totalOrders: 15,
-        totalSpent: 2500000,
-        lastOrder: new Date('2024-01-15'),
-        averageOrderValue: 166667,
-        favoriteItems: ['Phở Bò', 'Bún Chả'],
-        loyaltyPoints: 250
-      },
-      {
-        _id: '2',
-        name: 'Trần Thị B',
-        email: 'tranthib@email.com',
-        phone: '0987654321',
-        totalOrders: 8,
-        totalSpent: 1200000,
-        lastOrder: new Date('2024-01-14'),
-        averageOrderValue: 150000,
-        favoriteItems: ['Bánh Mì', 'Cơm Tấm'],
-        loyaltyPoints: 120
-      },
-      {
-        _id: '3',
-        name: 'Lê Văn C',
-        email: 'levanc@email.com',
-        phone: '0369852147',
-        totalOrders: 22,
-        totalSpent: 3800000,
-        lastOrder: new Date('2024-01-16'),
-        averageOrderValue: 172727,
-        favoriteItems: ['Chả Cá', 'Phở Bò'],
-        loyaltyPoints: 380
-      }
-    ];
+    // Get real customer data from orders
+    const customers = await this.getCustomersFromOrders(String(restaurant._id));
 
     const skip = (options.page - 1) * options.limit;
-    const paginatedCustomers = mockCustomers.slice(skip, skip + options.limit);
+    const paginatedCustomers = customers.slice(skip, skip + options.limit);
 
     return {
       data: paginatedCustomers,
       pagination: {
         page: options.page,
         limit: options.limit,
-        total: mockCustomers.length,
-        totalPages: Math.ceil(mockCustomers.length / options.limit),
-        hasNext: options.page < Math.ceil(mockCustomers.length / options.limit),
+        total: customers.length,
+        totalPages: Math.ceil(customers.length / options.limit),
+        hasNext: options.page < Math.ceil(customers.length / options.limit),
         hasPrev: options.page > 1
       }
     };
+  }
+
+  // Get customers from orders for a restaurant
+  async getCustomersFromOrders(restaurantId: string) {
+    // This would typically aggregate from orders collection
+    // For now, return empty array until we implement the real logic
+    return [];
   }
 
   // Find restaurant by owner user ID

@@ -1,6 +1,5 @@
-import { Controller, Get, Post, Delete, Param, UseInterceptors, UploadedFile, Res, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, UseInterceptors, UploadedFile, NotFoundException, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { Response } from 'express';
 import { ImageService } from '../services/image.service';
 
 @Controller('images')
@@ -16,18 +15,19 @@ export class ImageController {
       throw new BadRequestException('No file uploaded');
     }
 
-    return await this.imageService.uploadImage(file);
+    // Trả về url CDN sau khi upload thành công
+    const image = await this.imageService.uploadImage(file);
+    return { url: image.url };
   }
 
   @Get(':id')
-  async getImage(@Param('id') id: string, @Res() res: Response) {
+  async getImage(@Param('id') id: string) {
+    // Lấy url CDN của ảnh và trả về cho client
     const image = await this.imageService.getImageUrl(id);
     if (!image) {
       throw new NotFoundException('Image not found');
     }
-
-    // Redirect to cloud storage URL instead of serving binary data
-    res.redirect(image.url);
+    return { url: image.url };
   }
 
   @Get(':id/info')

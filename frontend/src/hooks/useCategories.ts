@@ -26,10 +26,12 @@ export const usePublicCategories = () => {
         setLoading(true);
         setError(null);
         
-        const response = await apiClient.get('/api/v1/restaurants/categories/public');
-        console.log('Categories response:', response);
+        const response = await apiClient.get('/api/v1/categories/public');
+        console.log('🔍 Categories API Response:', response);
+        console.log('📊 Response type:', typeof response, 'Is array:', Array.isArray(response));
         // Backend returns array directly, not wrapped in data property
         const categories = Array.isArray(response) ? response : (response as any).data?.categories || [];
+        console.log('✅ Processed categories:', categories);
         setData(categories);
       } catch (err: any) {
         console.error('Error fetching categories:', err);

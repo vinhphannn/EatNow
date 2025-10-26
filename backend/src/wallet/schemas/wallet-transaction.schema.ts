@@ -1,33 +1,36 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument } from 'mongoose';
-import { Types } from 'mongoose';
+import { Document, Types } from 'mongoose';
 
-export type WalletTransactionDocument = HydratedDocument<WalletTransaction>;
+export type WalletTransactionDocument = WalletTransaction & Document;
 
-@Schema({ timestamps: { createdAt: true, updatedAt: false } })
+@Schema({ timestamps: true })
 export class WalletTransaction {
-  @Prop({ enum: ['driver', 'restaurant'], required: true })
-  userType: 'driver' | 'restaurant';
+  @Prop({ required: true, type: Types.ObjectId, ref: 'Wallet' })
+  walletId: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, required: true })
-  userId: any;
+  @Prop({ required: true, type: Types.ObjectId, ref: 'Restaurant' })
+  restaurantId: Types.ObjectId;
 
-  @Prop({ enum: ['credit', 'debit'], required: true })
-  type: 'credit' | 'debit';
+  @Prop({ required: true, enum: ['deposit', 'withdraw', 'order_payment', 'refund', 'fee'] })
+  type: string;
 
-  @Prop({ required: true, min: 0 })
+  @Prop({ required: true })
   amount: number;
 
-  @Prop({ type: Types.ObjectId })
-  orderId?: any;
+  @Prop({ required: true })
+  description: string;
+
+  @Prop({ required: true, enum: ['pending', 'completed', 'failed'], default: 'pending' })
+  status: string;
+
+  @Prop({ type: Types.ObjectId, ref: 'Order' })
+  orderId?: Types.ObjectId;
 
   @Prop()
-  createdAt: Date;
+  orderCode?: string;
+
+  @Prop({ type: Object })
+  metadata?: any;
 }
 
 export const WalletTransactionSchema = SchemaFactory.createForClass(WalletTransaction);
-
-
-
-
-

@@ -37,7 +37,7 @@ export default function RestaurantDetail() {
         return;
       }
       // Cookie-based auth; token param is unused but required by typing
-      await cartService.addToCart({ itemId, quantity: 1 }, 'cookie-auth');
+      await cartService.addToCart(restaurant.id, { itemId, quantity: 1 }, 'cookie-auth');
       // Optional: give quick feedback
       alert('Đã thêm vào giỏ hàng');
     } catch (err) {

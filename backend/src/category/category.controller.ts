@@ -23,6 +23,18 @@ export class CategoryController {
     return this.categoryService.findPublicCategories();
   }
 
+  @Get('with-subcategories')
+  @ApiOperation({ summary: 'Lấy danh sách categories kèm subcategories' })
+  async getCategoriesWithSubCategories() {
+    return this.categoryService.findAllWithSubCategories();
+  }
+
+  @Get('debug-subcategories')
+  @ApiOperation({ summary: 'Debug subcategories' })
+  async debugSubCategories() {
+    return this.categoryService.debugSubCategories();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Lấy thông tin category theo ID' })
   async getCategoryById(@Param('id') id: string) {
