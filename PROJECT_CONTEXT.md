@@ -69,6 +69,16 @@
 - Frontend and backend fully synchronized
 - Real-time notifications working
 - Smart order assignment system operational
+- **Authentication system unified**: Role-specific cookie-based authentication
+- **Multi-login support**: Same machine can login multiple roles simultaneously
+
+### Recent Major Updates (Authentication Overhaul)
+- **Unified Token System**: Eliminated generic tokens, implemented role-specific cookies
+- **Multi-login Support**: Same machine can login multiple roles without conflicts
+- **Frontend Refactoring**: Migrated from localStorage to cookie-based authentication
+- **AuthContext Integration**: All components now use centralized auth state management
+- **UI/UX Improvements**: Clean login pages, proper logout functionality, role-specific navigation
+- **Security Enhancements**: HttpOnly cookies, SameSite protection, CSRF prevention
 
 ## Folder Structure & Responsibilities
 - `/backend`
@@ -82,6 +92,43 @@
   - `src/order`, `src/cart`, `src/payment`, `src/wallet`, `src/driver`, `src/customer`, `src/user`: core business domains
   - `src/notification`: multi-actor notification system with Socket.IO
   - `dist/`: compiled JS
+
+## Authentication & Cookie Architecture
+
+### Role-Specific Cookie System
+- **Design Philosophy**: Each role has separate authentication cookies to avoid confusion when multiple roles login on same machine
+- **Cookie Structure**:
+  - `{role}_access_token`: JWT token for authentication (HttpOnly, SameSite=Lax, path=/)
+  - `{role}_refresh_token`: Token for refresh (HttpOnly, SameSite=Strict, path=/auth)
+  - `{role}_csrf_token`: CSRF protection (Not HttpOnly, SameSite=Strict, path=/auth)
+  - `{role}_token`: Role indicator for middleware (HttpOnly, SameSite=Lax, path=/)
+
+### Supported Roles & Cookies
+- **Customer**: `customer_access_token`, `customer_refresh_token`, `customer_csrf_token`, `customer_token`
+- **Restaurant**: `restaurant_access_token`, `restaurant_refresh_token`, `restaurant_csrf_token`, `restaurant_token`
+- **Driver**: `driver_access_token`, `driver_refresh_token`, `driver_csrf_token`, `driver_token`
+- **Admin**: `admin_access_token`, `admin_refresh_token`, `admin_csrf_token`, `admin_token`
+
+### Authentication Flow
+1. **Login**: Backend creates JWT and sets role-specific cookies only
+2. **Request**: JWT Guard checks role-specific cookies (no generic tokens)
+3. **Middleware**: Validates `{role}_access_token` + `{role}_token` for route protection
+4. **Logout**: Clears all role-specific cookies from both backend and frontend
+
+### Security Features
+- **Role Isolation**: No shared tokens between roles
+- **Multi-login Support**: Same machine can login multiple roles simultaneously
+- **HttpOnly Cookies**: Prevents XSS attacks
+- **SameSite Protection**: Prevents CSRF attacks
+- **Path Restrictions**: Limits cookie scope
+- **No Generic Tokens**: Eliminated `access_token`, `refresh_token`, `csrf_token` to prevent confusion
+
+### Frontend Authentication Management
+- **AuthContext**: Centralized authentication state management
+- **Auth Hooks**: Role-specific hooks (`useCustomerAuth`, `useDriverAuth`, etc.)
+- **Cookie-based**: No localStorage for authentication tokens
+- **Auto-refresh**: Context automatically refreshes auth state after logout
+- **Route Protection**: Next.js middleware validates role-specific cookies
 
 ## Data Architecture & Business Rules
 
@@ -196,6 +243,12 @@ Implicit rules:
 - Reusable UI: cards, chips, icon buttons with hover states; responsive grids.
 - Iconography: FontAwesome via component mapping.
 
+### Layout & Navigation Improvements
+- **Clean Login Pages**: Login/register pages have no navbar or bottom navigation for focused UX
+- **Role-specific Navigation**: Each role has appropriate navigation (customer bottom nav, admin sidebar, etc.)
+- **Profile Management**: Customer profile page includes logout functionality
+- **Responsive Design**: Mobile-first approach with proper breakpoints
+
 ## API & Data Handling
 - REST over HTTP using `apiClient` that:
   - Auto-prefixes `/api/v1`
@@ -203,9 +256,11 @@ Implicit rules:
   - Handles 401 redirects to role-specific logins
 - Backend exposes NestJS REST controllers per domain with DTO validation and Mongoose models.
 - Authentication:
-  - Cookie-based session via `/auth/login` issuing `access_token` (HttpOnly)
-  - Role cookies (`admin_token` etc.) used by Next middleware to guard routes
+  - Role-specific cookie-based session via `/auth/login` issuing role-specific tokens
+  - Each role has separate cookies: `{role}_access_token`, `{role}_refresh_token`, `{role}_csrf_token`
+  - Role indicator cookies (`admin_token`, `customer_token`, etc.) used by Next middleware to guard routes
   - `/auth/me` protected by JWT guard to get current profile
+  - Multi-login support: same machine can login multiple roles simultaneously
 
 ## Business Logic (Functional Intent)
 - Food delivery platform:
@@ -224,5 +279,22 @@ When generating new code:
 - Reuse existing components instead of re-creating new ones
 - Match naming conventions
 - Avoid introducing new libraries unless explicitly allowed
+- **Authentication**: Always use role-specific cookies, never generic tokens
+- **Multi-login**: Design features to work with multiple roles on same machine
+- **Cookie Management**: Use `authService.logout()` for proper cookie clearing
+
+### Authentication Best Practices
+- **Never use localStorage for auth tokens**: Use cookie-based authentication only
+- **Use AuthContext**: Always use `useAuth()` or role-specific hooks for auth state
+- **Role-specific cookies**: Each role has separate cookies to avoid conflicts
+- **Middleware protection**: Routes are protected by Next.js middleware checking role-specific cookies
+- **Clean logout**: Always clear all role-specific cookies on logout
+
+### UI/UX Best Practices
+- **Clean login pages**: Login/register pages should not have navigation bars
+- **Role-appropriate navigation**: Use appropriate navigation for each role
+- **Profile management**: Include logout functionality in profile pages
+- **Responsive design**: Mobile-first approach with proper breakpoints
+- **Consistent styling**: Use Tailwind classes and existing component patterns
 
 

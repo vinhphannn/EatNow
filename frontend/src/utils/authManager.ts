@@ -1,93 +1,42 @@
 export class AuthManager {
-  // Driver Auth
-  static setDriverAuth(token: string, user: any) {
-    localStorage.setItem('driver_token', token);
-    localStorage.setItem('driver_user', JSON.stringify(user));
-    localStorage.setItem('driver_role', 'driver');
-  }
-
-  static getDriverAuth() {
-    return {
-      token: localStorage.getItem('driver_token'),
-      user: JSON.parse(localStorage.getItem('driver_user') || '{}'),
-      role: localStorage.getItem('driver_role')
-    };
-  }
-
-  static clearDriverAuth() {
-    localStorage.removeItem('driver_token');
-    localStorage.removeItem('driver_user');
-    localStorage.removeItem('driver_role');
-  }
-
-  // Customer Auth
-  static setCustomerAuth(token: string, user: any) {
-    localStorage.setItem('customer_token', token);
-    localStorage.setItem('customer_user', JSON.stringify(user));
-    localStorage.setItem('customer_role', 'customer');
-  }
-
-  static getCustomerAuth() {
-    return {
-      token: localStorage.getItem('customer_token'),
-      user: JSON.parse(localStorage.getItem('customer_user') || '{}'),
-      role: localStorage.getItem('customer_role')
-    };
-  }
-
-  static clearCustomerAuth() {
-    localStorage.removeItem('customer_token');
-    localStorage.removeItem('customer_user');
-    localStorage.removeItem('customer_role');
-  }
-
-  // Restaurant Auth
-  static setRestaurantAuth(token: string, user: any) {
-    localStorage.setItem('restaurant_token', token);
-    localStorage.setItem('restaurant_user', JSON.stringify(user));
-    localStorage.setItem('restaurant_role', 'restaurant');
-  }
-
-  static getRestaurantAuth() {
-    return {
-      token: localStorage.getItem('restaurant_token'),
-      user: JSON.parse(localStorage.getItem('restaurant_user') || '{}'),
-      role: localStorage.getItem('restaurant_role')
-    };
-  }
-
-  static clearRestaurantAuth() {
-    localStorage.removeItem('restaurant_token');
-    localStorage.removeItem('restaurant_user');
-    localStorage.removeItem('restaurant_role');
-  }
-
-  // Admin Auth
-  static setAdminAuth(token: string, user: any) {
-    localStorage.setItem('admin_token', token);
-    localStorage.setItem('admin_user', JSON.stringify(user));
-    localStorage.setItem('admin_role', 'admin');
-  }
-
-  static getAdminAuth() {
-    return {
-      token: localStorage.getItem('admin_token'),
-      user: JSON.parse(localStorage.getItem('admin_user') || '{}'),
-      role: localStorage.getItem('admin_role')
-    };
-  }
-
-  static clearAdminAuth() {
-    localStorage.removeItem('admin_token');
-    localStorage.removeItem('admin_user');
-    localStorage.removeItem('admin_role');
-  }
-
-  // Clear all auth
+  // Clear all authentication cookies (only role-specific, no generic cookies)
   static clearAllAuth() {
-    this.clearDriverAuth();
-    this.clearCustomerAuth();
-    this.clearRestaurantAuth();
-    this.clearAdminAuth();
+    if (typeof document !== 'undefined') {
+      // Role-specific authentication cookies that backend sets
+      const authCookies = [
+        // Role-specific access tokens
+        'customer_access_token',
+        'restaurant_access_token', 
+        'driver_access_token',
+        'admin_access_token',
+        // Role-specific refresh tokens
+        'customer_refresh_token',
+        'restaurant_refresh_token',
+        'driver_refresh_token', 
+        'admin_refresh_token',
+        // Role-specific CSRF tokens
+        'customer_csrf_token',
+        'restaurant_csrf_token',
+        'driver_csrf_token',
+        'admin_csrf_token',
+        // Role indicator cookies (for middleware)
+        'customer_token',
+        'restaurant_token',
+        'driver_token', 
+        'admin_token'
+      ];
+      
+      // Clear cookies for different paths (backend sets different paths)
+      const paths = ['/', '/auth', '/driver/', '/admin/', '/restaurant/', '/customer/'];
+      
+      authCookies.forEach(cookieName => {
+        paths.forEach(path => {
+          // Clear with different SameSite settings
+          document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=${path};`;
+          document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=${path}; SameSite=Lax;`;
+          document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=${path}; SameSite=Strict;`;
+        });
+      });
+    }
   }
 }

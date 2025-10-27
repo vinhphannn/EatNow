@@ -27,8 +27,8 @@ export default function AdminDebugRawPage() {
           <p className="text-lg"><strong>User Email:</strong> {user?.email || 'N/A'}</p>
           <p className="text-lg"><strong>User Name:</strong> {user?.name || 'N/A'}</p>
           <p className="text-lg"><strong>Error:</strong> {error || 'None'}</p>
-          <p className="text-lg"><strong>Access Token:</strong> Check localStorage</p>
-          <p className="text-lg"><strong>Refresh Token:</strong> Check localStorage</p>
+          <p className="text-lg"><strong>Access Token:</strong> Cookie-based (HttpOnly)</p>
+          <p className="text-lg"><strong>Refresh Token:</strong> Cookie-based (HttpOnly)</p>
         </div>
         
         <div className="mt-4 text-sm text-gray-500">

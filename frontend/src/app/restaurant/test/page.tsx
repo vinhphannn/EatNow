@@ -20,10 +20,10 @@ export default function RestaurantTestPage() {
           <strong>User:</strong> {user ? JSON.stringify(user, null, 2) : 'null'}
         </div>
         <div>
-          <strong>LocalStorage Token:</strong> {typeof window !== 'undefined' ? localStorage.getItem('eatnow_token') || 'null' : 'SSR'}
+          <strong>LocalStorage Token:</strong> <span className="text-gray-500">Deprecated - Using cookie-based auth</span>
         </div>
         <div>
-          <strong>LocalStorage User:</strong> {typeof window !== 'undefined' ? localStorage.getItem('eatnow_user_data') || 'null' : 'SSR'}
+          <strong>LocalStorage User:</strong> <span className="text-gray-500">Deprecated - Using AuthContext</span>
         </div>
       </div>
     </div>

@@ -5,6 +5,7 @@ import { Order, OrderDocument } from '../schemas/order.schema';
 import { DriverPresenceService } from '../../driver/services/driver-presence.service';
 import { OrderQueueService } from './order-queue.service';
 import { SmartAssignmentService } from '../../driver/services/smart-assignment.service';
+import { OptimizedNotificationGateway } from '../../notification/optimized-notification.gateway';
 
 /**
  * Assignment Worker Service
@@ -32,6 +33,7 @@ export class AssignmentWorkerService {
     private readonly driverPresenceService: DriverPresenceService,
     private readonly orderQueueService: OrderQueueService,
     private readonly smartAssignmentService: SmartAssignmentService,
+    private readonly notificationGateway: OptimizedNotificationGateway,
   ) {}
 
   /**
@@ -235,15 +237,24 @@ export class AssignmentWorkerService {
    */
   private async notifyDriver(driverId: string, orderId: string, order: any): Promise<void> {
     try {
-      // Get driver's socket ID from presence
-      const presence = await this.driverPresenceService.getDriverPresence(driverId);
-      
-      // This will be handled by the Gateway
-      // We emit event to room "driver:{driverId}"
       this.logger.log(`📡 Emitting order notification to driver ${driverId}`);
       
-      // The gateway will handle the actual socket emit
-      // We just log here for now
+      // Gửi socket notification thông qua Gateway
+      this.notificationGateway.notifyDriverAssigned(driverId, {
+        orderId,
+        message: 'Bạn có đơn hàng mới!',
+        order: {
+          _id: orderId,
+          code: order.code || order.orderCode,
+          restaurantName: order.restaurantName,
+          customerName: order.recipientName || order.customerName,
+          deliveryAddress: order.deliveryAddress,
+          total: order.finalTotal || order.total,
+          createdAt: order.createdAt
+        }
+      });
+
+      this.logger.log(`✅ Socket notification sent to driver ${driverId} for order ${orderId}`);
 
     } catch (error) {
       this.logger.error(`Failed to notify driver ${driverId}:`, error);

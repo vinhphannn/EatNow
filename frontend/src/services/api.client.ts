@@ -1,4 +1,5 @@
 // API Client for EatNow application
+import { redirectToAppropriateLogin } from '@/hooks/useRoleAuth';
 
 export interface ApiError {
   message: string;
@@ -241,17 +242,13 @@ export const handleApiError = (error: any): string => {
 
 // Request interceptor for adding common headers
 export const setAuthToken = (token: string) => {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('eatnow_token', token);
-  }
+  // Deprecated: Cookie-based auth doesn't need localStorage
+  console.warn('setAuthToken is deprecated. Use cookie-based authentication instead.');
 };
 
 export const clearAuthToken = () => {
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem('eatnow_token');
-    localStorage.removeItem('eatnow_user_data');
-    localStorage.removeItem('eatnow_restaurant_id');
-  }
+  // Deprecated: Cookie-based auth doesn't need localStorage
+  console.warn('clearAuthToken is deprecated. Use authService.logout() instead.');
 };
 
 // Response interceptor for handling common errors
@@ -265,22 +262,8 @@ export const setupResponseInterceptors = () => {
     } catch (error) {
       if (error && typeof error === 'object' && error.status === 401) {
         // Token expired, redirect to appropriate login based on current path
-        clearAuthToken();
-        if (typeof window !== 'undefined') {
-          const pathname = window.location.pathname || '';
-          if (pathname.startsWith('/customer')) {
-            window.location.href = '/customer/login';
-          } else if (pathname.startsWith('/restaurant')) {
-            window.location.href = '/restaurant/login';
-          } else if (pathname.startsWith('/driver')) {
-            window.location.href = '/driver/login';
-          } else if (pathname.startsWith('/admin')) {
-            window.location.href = '/admin/login';
-          } else {
-            // Default to customer login
-            window.location.href = '/customer/login';
-          }
-        }
+        // Cookie-based auth: cookies are automatically cleared by backend
+        redirectToAppropriateLogin();
       }
       throw error;
     }

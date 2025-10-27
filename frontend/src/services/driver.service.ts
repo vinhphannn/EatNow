@@ -59,6 +59,18 @@ class DriverService {
     return apiClient.post('/driver/location/status', { isOnline });
   }
 
+  async checkIn(): Promise<{ success: boolean; message: string; status?: string }> {
+    return apiClient.post('/driver/orders/checkin');
+  }
+
+  async checkOut(): Promise<{ success: boolean; message: string; status?: string }> {
+    return apiClient.post('/driver/orders/checkout');
+  }
+
+  async getDriverStatus(): Promise<{ success: boolean; data?: { status: string; deliveryStatus: string | null; currentOrderId?: string; lastCheckinAt?: string; lastCheckoutAt?: string } }> {
+    return apiClient.get('/drivers/me/status');
+  }
+
   async getMyOrders(params?: { status?: string; page?: number; limit?: number }): Promise<{ orders: DriverOrderSummary[]; pagination?: any } | DriverOrderSummary[]> {
     // Get current orders for driver (incomplete orders)
     return await apiClient.get('/drivers/me/current-orders', { params });

@@ -173,19 +173,8 @@ export default function RestaurantMenuPage() {
     if (restaurantId) return restaurantId;
 
     try {
-      // 1) Try from localStorage and validate
-      if (typeof localStorage !== 'undefined') {
-        const rid = localStorage.getItem('eatnow_restaurant_id') || '';
-        if (rid) {
-          const check = await fetch(`${api}/api/v1/restaurants/${rid}`, { credentials: 'include' });
-          if (check.ok) {
-            setRestaurantId(rid);
-            return rid;
-          }
-          // Invalid or not owned → clear
-          localStorage.removeItem('eatnow_restaurant_id');
-        }
-      }
+      // 1) Try from AuthContext or API call
+      // Cookie-based auth: get restaurant from API instead of localStorage
 
       // 2) Resolve by current authenticated owner
       const mine = await fetch(`${api}/api/v1/restaurants/mine`, { credentials: 'include' });
@@ -193,32 +182,13 @@ export default function RestaurantMenuPage() {
         const rest = await mine.json();
         const resolvedId = rest?.id || rest?._id || rest?._id?.$oid || '';
         if (resolvedId) {
-          if (typeof localStorage !== 'undefined') localStorage.setItem('eatnow_restaurant_id', resolvedId);
           setRestaurantId(resolvedId);
           return resolvedId;
         }
       }
 
-      // 3) Final fallback: try ownerUserId from cached user if exists
-      if (typeof localStorage !== 'undefined') {
-        const u = localStorage.getItem('eatnow_user');
-        if (u) {
-          const user = JSON.parse(u);
-          if (user?.id) {
-            const r = await fetch(`${api}/api/v1/restaurants?ownerUserId=${user.id}`, { credentials: 'include' });
-            if (r.ok) {
-              const list = await r.json();
-              const first = Array.isArray(list) && list.length ? list[0] : null;
-              const fbId = first?.id || first?._id || first?._id?.$oid || null;
-              if (fbId) {
-                localStorage.setItem('eatnow_restaurant_id', fbId);
-                setRestaurantId(fbId);
-                return fbId;
-              }
-            }
-          }
-        }
-      }
+      // 3) Final fallback: try to get from AuthContext
+      // Cookie-based auth: no localStorage fallback needed
     } catch {}
     return null;
   }

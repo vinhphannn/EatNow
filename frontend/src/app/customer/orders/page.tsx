@@ -625,7 +625,7 @@ export default function OrdersPage() {
                         <>
                           <div className="flex justify-between text-gray-600">
                             <span>Tạm tính:</span>
-                            <span>{order.total.toLocaleString('vi-VN')}đ</span>
+                            <span>{order.subtotal?.toLocaleString('vi-VN') || 0}đ</span>
                           </div>
                           <div className="flex justify-between text-gray-600">
                             <span>Phí giao hàng:</span>

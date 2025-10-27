@@ -106,19 +106,43 @@ export class DriverService {
 
     console.log('🔍 Loading current orders for driver:', driver._id);
     console.log('🔍 Driver userId:', userId);
+    console.log('🔍 Driver _id:', driver._id);
 
     // Find orders where driverId matches this driver's _id (as ObjectId)
+    const driverId = (driver as any)._id;
+    console.log('🔍 Searching for orders with driverId:', driverId);
+    
     const orders = await this.orderModel
       .find({
-        driverId: (driver as any)._id,
+        driverId: driverId,
         status: { $nin: ['delivered', 'cancelled'] }
       })
-      .populate('restaurantId', 'name address coordinates')
-      .populate('customerId', 'name phone')
       .sort({ createdAt: -1 })
       .lean();
+    
+    console.log('🔍 Orders after query:', orders.length);
+    console.log('🔍 First order data:', orders[0]?.restaurantId);
 
     console.log('🔍 Found orders:', orders.length);
+    
+    // Debug: Check all orders with this driverId
+    const allOrdersWithDriverId = await this.orderModel
+      .find({ driverId: driverId })
+      .select('_id status driverId')
+      .lean();
+    console.log('🔍 All orders with driverId (any status):', allOrdersWithDriverId.length);
+    if (allOrdersWithDriverId.length > 0) {
+      console.log('🔍 Order details:', allOrdersWithDriverId.map(o => ({ 
+        _id: o._id, 
+        status: o.status, 
+        driverId: o.driverId 
+      })));
+    }
+    
+    if (orders.length > 0) {
+      console.log('🔍 Order statuses:', orders.map(o => o.status));
+      console.log('🔍 Order driverIds:', orders.map(o => o.driverId));
+    }
 
     return orders.map((order: any) => ({
       _id: order._id,
@@ -131,7 +155,8 @@ export class DriverService {
       customerName: order.customerId?.name || order.deliveryAddress?.recipientName || 'N/A',
       customerPhone: order.customerId?.phone || order.deliveryAddress?.recipientPhone || '',
       customerAddress: order.deliveryAddress?.addressLine || '',
-      totalAmount: order.total || order.finalTotal || order.totalAmount,
+      totalAmount: order.finalTotal || order.customerPayment || order.total || order.totalAmount,
+      subtotal: order.subtotal || order.total || 0,
       deliveryFee: order.deliveryFee,
       createdAt: order.createdAt,
       assignedAt: order.assignedAt,
@@ -359,6 +384,65 @@ export class DriverService {
       })),
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) || 1 },
     };
+  }
+
+  async getDriverStatus(userId: string) {
+    try {
+      const driver = await this.driverModel.findOne({ userId });
+      
+      if (!driver) {
+        // Tự động tạo driver profile
+        const newDriver = await this.driverModel.create({
+          userId,
+          status: 'checkout',
+          deliveryStatus: null,
+          location: [0, 0],
+          lastLocationAt: new Date(),
+          ordersCompleted: 0,
+          ordersRejected: 0,
+          ordersSkipped: 0,
+          rating: 0,
+          ratingCount: 0,
+          onTimeDeliveries: 0,
+          lateDeliveries: 0,
+          totalDeliveries: 0,
+          averageDeliveryTime: 0,
+          performanceScore: 0,
+          activeOrdersCount: 0,
+          maxConcurrentOrders: 1,
+          averageDistancePerOrder: 0,
+          totalDistanceTraveled: 0,
+          walletBalance: 0
+        });
+
+        return {
+          success: true,
+          data: {
+            status: newDriver.status,
+            deliveryStatus: newDriver.deliveryStatus,
+            currentOrderId: null,
+            lastCheckinAt: null,
+            lastCheckoutAt: null
+          }
+        };
+      }
+
+      return {
+        success: true,
+        data: {
+          status: driver.status,
+          deliveryStatus: driver.deliveryStatus,
+          currentOrderId: driver.currentOrderId ? String(driver.currentOrderId) : null,
+          lastCheckinAt: driver.lastCheckinAt,
+          lastCheckoutAt: driver.lastCheckoutAt
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to get driver status'
+      };
+    }
   }
 }
 

@@ -33,11 +33,8 @@ export default function CustomerLoginPage() {
       });
 
       if (response.ok) {
-        // Cookie-based session; no localStorage tokens
+        // Cookie-based session: cookies are automatically set by backend
         const data = await response.json().catch(() => null);
-        if (data?.user) {
-          localStorage.setItem('eatnow_user_data', JSON.stringify(data.user));
-        }
         
         // Redirect to home page after successful login
         console.log('🔍 Login: Redirecting to /customer/home');

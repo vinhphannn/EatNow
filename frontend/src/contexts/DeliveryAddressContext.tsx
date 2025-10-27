@@ -15,7 +15,7 @@ export function DeliveryAddressProvider({ children }: { children: ReactNode }) {
   const [addressLabel, setAddressLabel] = useState<string>('Chưa có địa chỉ');
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
 
-  // Load address from localStorage on mount
+  // Load address from localStorage on mount (non-auth data)
   useEffect(() => {
     try {
       const saved = typeof window !== 'undefined' ? localStorage.getItem('eatnow_delivery_address') : null;
@@ -31,7 +31,7 @@ export function DeliveryAddressProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, []);
 
-  // Save address to localStorage when it changes
+  // Save address to localStorage when it changes (non-auth data)
   useEffect(() => {
     if (addressLabel && addressLabel !== 'Chưa có địa chỉ') {
       try {

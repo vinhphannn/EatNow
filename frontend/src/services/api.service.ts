@@ -12,13 +12,8 @@ export async function apiCall(
     'Content-Type': 'application/json',
   };
 
-  // Add auth token if needed
-  if (auth) {
-    const token = localStorage.getItem('eatnow_token');
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-  }
+  // Cookie-based auth: no need to add Authorization header
+  // Cookies are automatically included with credentials: 'include'
 
   const options: RequestInit = {
     method,

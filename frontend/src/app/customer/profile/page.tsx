@@ -6,7 +6,7 @@ import { apiClient } from "@/services/api.client";
 import { useToast } from "@/components";
 import { useCustomerAuth } from "@/contexts/AuthContext";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faMapMarkerAlt, faWallet, faHeart, faUser, faEdit, faTrash, faPlus, faStar, faPhone, faStickyNote } from "@fortawesome/free-solid-svg-icons";
+import { faMapMarkerAlt, faWallet, faHeart, faUser, faEdit, faTrash, faPlus, faStar, faPhone, faStickyNote, faSignOutAlt } from "@fortawesome/free-solid-svg-icons";
 
 interface AddressForm {
   label: string;
@@ -35,7 +35,7 @@ interface FavoriteRestaurant {
 
 export default function CustomerProfilePage() {
   const { showToast } = useToast();
-  const { user } = useCustomerAuth();
+  const { user, logout } = useCustomerAuth();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'addresses' | 'wallet' | 'favorites'>('addresses');
   const [loading, setLoading] = useState(true);
@@ -473,6 +473,18 @@ export default function CustomerProfilePage() {
     }
   };
 
+  // Logout function
+  const handleLogout = async () => {
+    try {
+      await logout();
+      showToast('Đã đăng xuất thành công', 'success');
+      router.push('/customer/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+      showToast('Có lỗi xảy ra khi đăng xuất', 'error');
+    }
+  };
+
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-8 max-w-4xl">
@@ -487,16 +499,27 @@ export default function CustomerProfilePage() {
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl pb-20">
         {/* Header */}
-      <div className="flex items-center gap-4 mb-8">
-        <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center">
-          <FontAwesomeIcon icon={faUser} className="text-2xl text-orange-600" />
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-4">
+          <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center">
+            <FontAwesomeIcon icon={faUser} className="text-2xl text-orange-600" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {user?.name || 'Tài khoản của tôi'}
+            </h1>
+            <p className="text-gray-600">{user?.email}</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            {user?.name || 'Tài khoản của tôi'}
-          </h1>
-          <p className="text-gray-600">{user?.email}</p>
-        </div>
+        
+        {/* Logout Button */}
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-2 px-4 py-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+        >
+          <FontAwesomeIcon icon={faSignOutAlt} className="w-4 h-4" />
+          <span>Đăng xuất</span>
+        </button>
       </div>
 
       {/* Tab Navigation */}

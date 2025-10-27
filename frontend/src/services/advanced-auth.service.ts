@@ -1,3 +1,13 @@
+/**
+ * @deprecated This service uses localStorage-based authentication.
+ * Use AuthContext and authService for cookie-based authentication instead.
+ * This file is kept for reference but should not be used in new code.
+ * 
+ * For new development, use:
+ * - useRoleAuth() hook for role-specific authentication
+ * - authService for API calls
+ * - AuthContext for global auth state
+ */
 import { User, UserRole, AuthTokens, LoginCredentials, Permission, ROLE_PERMISSIONS } from '@/types/auth';
 
 class AdvancedAuthService {

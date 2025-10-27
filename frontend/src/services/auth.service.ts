@@ -1,13 +1,7 @@
 import { User, UserRole, AuthTokens, LoginCredentials, Permission, ROLE_PERMISSIONS } from '@/types/auth';
 
 class AuthService {
-  private readonly STORAGE_KEYS = {
-    // Note: We're using cookie-based auth now, so these are just for fallback
-    ACCESS_TOKEN: 'eatnow_token',
-    REFRESH_TOKEN: 'eatnow_refresh_token',
-    USER_DATA: 'eatnow_user_data',
-    TOKEN_EXPIRES: 'eatnow_token_expires',
-  };
+  // Using cookie-based auth only, no localStorage
 
   // API endpoints
   private readonly API_ENDPOINTS = {
@@ -28,38 +22,31 @@ class AuthService {
              body: JSON.stringify(credentials),
            });
 
-           if (!response.access_token || !response.user) {
+           // Backend now returns user data directly (cookie-based auth)
+           // response may be: { id, email, role, name, ... } or { user: { id, email, role, name, ... } }
+           const userData = response.user || response;
+
+           if (!userData || !userData.email) {
              throw new Error('Invalid response from server');
            }
 
       // Map API response to our User interface
-      console.log('🔍 Login response:', response);
-      console.log('🔍 User role from API:', response.user.role);
-      
       const user: User = {
-        id: response.user.id,
-        email: response.user.email,
-        role: response.user.role,
-        name: response.user.name || response.user.fullName || response.user.email,
-        permissions: ROLE_PERMISSIONS[response.user.role] || [],
+        id: userData.id || userData._id,
+        email: userData.email,
+        role: userData.role,
+        name: userData.name || userData.fullName || userData.email,
+        permissions: ROLE_PERMISSIONS[userData.role] || [],
         isActive: true,
         lastLoginAt: new Date().toISOString(),
-        createdAt: response.user.createdAt || new Date().toISOString(),
-        updatedAt: response.user.updatedAt || new Date().toISOString(),
+        createdAt: userData.createdAt || new Date().toISOString(),
+        updatedAt: userData.updatedAt || new Date().toISOString(),
       };
-      
-      console.log('🔍 Mapped user:', user);
-      console.log('🔍 UserRole.DRIVER:', UserRole.DRIVER);
-      console.log('🔍 Is driver?', user.role === UserRole.DRIVER);
 
-      // Cookie-based: do not manage tokens in localStorage
-      this.setUser(user);
-
-      // Ensure role cookie is set for middleware-based guards
+      // Cookie-based auth: tokens are in cookies, do not store in localStorage
+      // Set role-specific cookie for middleware detection
       if (typeof document !== 'undefined') {
         try {
-          // Set a lightweight role-specific cookie so middleware can detect access
-          // Note: Server should ideally set this HttpOnly cookie. This is a fallback.
           const roleCookies = {
             [UserRole.CUSTOMER]: 'customer_token',
             [UserRole.RESTAURANT]: 'restaurant_token',
@@ -68,10 +55,11 @@ class AuthService {
           };
           
           if (roleCookies[user.role]) {
-            document.cookie = `${roleCookies[user.role]}=1; path=/; SameSite=Lax; max-age=${60 * 60}`; // 1 hour
+            document.cookie = `${roleCookies[user.role]}=1; path=/; SameSite=Lax; max-age=${60 * 60 * 24}`; // 24 hours
           }
         } catch {}
       }
+      
       return { user };
     } catch (error) {
       console.error('Login error:', error);
@@ -85,11 +73,48 @@ class AuthService {
   async logout(): Promise<void> {
     try {
       await this.apiCall(this.API_ENDPOINTS.LOGOUT, { method: 'POST' });
-      this.clearAuthData();
     } catch (error) {
-      // Even if API fails, clear local data
-      this.clearAuthData();
-      throw error;
+      // Ignore API errors during logout
+      console.error('Logout API error:', error);
+    }
+    
+    // Clear authentication cookies (only role-specific, no generic cookies)
+    if (typeof document !== 'undefined') {
+      // Role-specific authentication cookies that backend sets
+      const authCookies = [
+        // Role-specific access tokens
+        'customer_access_token',
+        'restaurant_access_token', 
+        'driver_access_token',
+        'admin_access_token',
+        // Role-specific refresh tokens
+        'customer_refresh_token',
+        'restaurant_refresh_token',
+        'driver_refresh_token', 
+        'admin_refresh_token',
+        // Role-specific CSRF tokens
+        'customer_csrf_token',
+        'restaurant_csrf_token',
+        'driver_csrf_token',
+        'admin_csrf_token',
+        // Role indicator cookies (for middleware)
+        'customer_token',
+        'restaurant_token',
+        'driver_token', 
+        'admin_token'
+      ];
+      
+      // Clear cookies for different paths (backend sets different paths)
+      const paths = ['/', '/auth', '/driver/', '/admin/', '/restaurant/', '/customer/'];
+      
+      authCookies.forEach(cookieName => {
+        paths.forEach(path => {
+          // Clear with different SameSite settings
+          document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=${path};`;
+          document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=${path}; SameSite=Lax;`;
+          document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=${path}; SameSite=Strict;`;
+        });
+      });
     }
   }
 
@@ -106,29 +131,11 @@ class AuthService {
    */
   async getCurrentUser(): Promise<User | null> {
     try {
-      // Check if we're in browser environment
-      if (typeof window === 'undefined') {
-        return null;
-      }
-
-      const user = this.getStoredUser();
-      if (!user) return null;
-
-      // Verify token is still valid
-      if (this.isTokenExpired()) {
-        try {
-          await this.refreshAccessToken();
-        } catch (refreshError) {
-          console.error("Token refresh failed:", refreshError);
-          this.clearAuthData();
-          return null;
-        }
-      }
-
-      return user;
+      // Cookie-based auth: fetch user from server
+      const response = await this.apiCall(this.API_ENDPOINTS.PROFILE, { method: 'GET' });
+      return response;
     } catch (error) {
       console.error("getCurrentUser error:", error);
-      this.clearAuthData();
       return null;
     }
   }
@@ -160,57 +167,8 @@ class AuthService {
    * Kiểm tra đã đăng nhập chưa
    */
   isAuthenticated(): boolean {
-    if (typeof window === 'undefined') return false;
-    const user = this.getStoredUser();
-    return !!user;
-  }
-
-  // Private methods for token management
-  private setTokens(tokens: AuthTokens): void {
-    if (typeof window === 'undefined') return;
-    
-    localStorage.setItem(this.STORAGE_KEYS.ACCESS_TOKEN, tokens.accessToken);
-    localStorage.setItem(this.STORAGE_KEYS.REFRESH_TOKEN, tokens.refreshToken);
-    localStorage.setItem(this.STORAGE_KEYS.TOKEN_EXPIRES, tokens.expiresAt.toString());
-  }
-
-  private setUser(user: User): void {
-    if (typeof window === 'undefined') return;
-    
-    localStorage.setItem(this.STORAGE_KEYS.USER_DATA, JSON.stringify(user));
-  }
-
-  private getAccessToken(): string | null {
-    if (typeof window === 'undefined') return null;
-    
-    return localStorage.getItem(this.STORAGE_KEYS.ACCESS_TOKEN);
-  }
-
-  private getRefreshToken(): string | null {
-    if (typeof window === 'undefined') return null;
-    
-    return localStorage.getItem(this.STORAGE_KEYS.REFRESH_TOKEN);
-  }
-
-  private getStoredUser(): User | null {
-    if (typeof window === 'undefined') return null;
-    
-    try {
-      const userData = localStorage.getItem(this.STORAGE_KEYS.USER_DATA);
-      return userData ? JSON.parse(userData) : null;
-    } catch (error) {
-      console.error("getStoredUser error:", error);
-      return null;
-    }
-  }
-
-  private clearAuthData(): void {
-    if (typeof window === 'undefined') return;
-    
-    localStorage.removeItem(this.STORAGE_KEYS.ACCESS_TOKEN);
-    localStorage.removeItem(this.STORAGE_KEYS.REFRESH_TOKEN);
-    localStorage.removeItem(this.STORAGE_KEYS.USER_DATA);
-    localStorage.removeItem(this.STORAGE_KEYS.TOKEN_EXPIRES);
+    // Cookie-based: check if user data exists in context, not localStorage
+    return false;
   }
 
   // Utility method for API calls

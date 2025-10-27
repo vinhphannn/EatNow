@@ -54,21 +54,30 @@ export default function NewOrderNotification({
   console.log('🔍 NewOrderNotification - Raw order data:', order);
   console.log('🔍 NewOrderNotification - Order items:', order.items);
   console.log('🔍 NewOrderNotification - Order customer:', order.customerId);
+  console.log('🔍 NewOrderNotification - Order subtotal:', order.subtotal);
+  console.log('🔍 NewOrderNotification - Order finalTotal:', order.finalTotal);
+  console.log('🔍 NewOrderNotification - Order deliveryAddress:', order.deliveryAddress);
+  console.log('🔍 NewOrderNotification - Order customerId:', order.customerId);
 
   // Safely extract order data with fallbacks
   const orderData = {
     _id: order._id || order.id || 'unknown',
-    orderCode: order.orderCode || order.order_code || (order.id ? order.id.toString().slice(-8).toUpperCase() : 'N/A'),
+    orderCode: order.orderCode || order.order_code || order.code || (order.id ? order.id.toString().slice(-8).toUpperCase() : 'N/A'),
     items: Array.isArray(order.items) ? order.items : (order.orderItems ? order.orderItems : []),
-    total: order.total || order.subtotal || 0,
+    subtotal: order.subtotal || 0, // Tiền món ăn
+    total: order.subtotal || order.total || 0, // Dùng subtotal thay vì total
     deliveryFee: order.deliveryFee || order.delivery_fee || 0,
-    finalTotal: order.finalTotal || order.final_total || order.total || 0,
+    tip: order.tip || 0,
+    doorFee: order.doorFee || order.door_fee || 0,
+    finalTotal: order.finalTotal || order.final_total || (order.subtotal || 0) + (order.deliveryFee || 0) + (order.tip || 0) + (order.doorFee || 0),
+    restaurantRevenue: order.restaurantRevenue || order.restaurant_revenue || 0, // Tiền quán nhận
     paymentMethod: order.paymentMethod || order.payment_method || 'cash',
     customerId: order.customerId || order.customer || {},
-    recipientName: order.recipientName || order.recipient_name || order.customerId?.name || 'Chưa cập nhật',
-    recipientPhonePrimary: order.recipientPhonePrimary || order.recipient_phone || order.customerId?.phone || 'Chưa cập nhật',
+    recipientName: order.recipientName || order.recipient_name || order.deliveryAddress?.recipientName || order.customerId?.name || 'Chưa cập nhật',
+    recipientPhonePrimary: order.recipientPhonePrimary || order.recipient_phone || order.deliveryAddress?.recipientPhone || order.customerId?.phone || 'Chưa cập nhật',
     deliveryAddress: order.deliveryAddress || order.delivery_address || 'Địa chỉ không xác định',
     deliveryDistance: order.deliveryDistance || order.delivery_distance || 0,
+    estimatedDeliveryTime: order.estimatedDeliveryTime || order.estimated_delivery_time,
     specialInstructions: order.specialInstructions || order.special_instructions || '',
     createdAt: order.createdAt || order.created_at || new Date().toISOString()
   };
@@ -128,38 +137,6 @@ export default function NewOrderNotification({
 
       <DialogContent sx={{ pt: 2 }}>
         <Stack spacing={3}>
-          {/* Thông tin khách hàng */}
-          <Card variant="outlined" sx={{ bgcolor: 'grey.50' }}>
-            <CardContent sx={{ py: 2 }}>
-              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-                <UserIcon width={20} color="#1976d2" />
-                <Typography variant="subtitle1" fontWeight={600} color="primary.main">
-                  Thông tin khách hàng
-                </Typography>
-              </Stack>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                <Box>
-                  <Typography variant="body2" color="text.secondary">Tên khách hàng:</Typography>
-                  <Typography variant="body1" fontWeight={600}>
-                    {orderData.customerId?.name || 'Chưa cập nhật'}
-                  </Typography>
-                </Box>
-                <Box>
-                  <Typography variant="body2" color="text.secondary">SĐT:</Typography>
-                  <Typography variant="body1" fontWeight={600}>
-                    📞 {orderData.customerId?.phone || 'Chưa cập nhật'}
-                  </Typography>
-                </Box>
-                <Box>
-                  <Typography variant="body2" color="text.secondary">Email:</Typography>
-                  <Typography variant="body1" fontWeight={600}>
-                    📧 {orderData.customerId?.email || 'Chưa cập nhật'}
-                  </Typography>
-                </Box>
-              </Stack>
-            </CardContent>
-          </Card>
-
           {/* Thông tin người nhận */}
           {(orderData.recipientName !== 'Chưa cập nhật' || orderData.recipientPhonePrimary !== 'Chưa cập nhật') && (
             <Card variant="outlined" sx={{ bgcolor: 'info.light' }}>
@@ -198,7 +175,9 @@ export default function NewOrderNotification({
                 </Typography>
               </Stack>
               <Typography variant="body1" fontWeight={600} sx={{ mb: 1 }}>
-                {orderData.deliveryAddress}
+                {typeof orderData.deliveryAddress === 'string' 
+                  ? orderData.deliveryAddress 
+                  : (orderData.deliveryAddress?.addressLine || orderData.deliveryAddress?.label || 'Địa chỉ không xác định')}
               </Typography>
               {orderData.deliveryDistance > 0 && (
                 <Typography variant="body2" color="text.secondary">
@@ -291,23 +270,18 @@ export default function NewOrderNotification({
                     {formatPrice(orderData.total)}
                   </Typography>
                 </Stack>
-                <Stack direction="row" justifyContent="space-between" alignItems="center">
-                  <Typography variant="body2" color="text.secondary">
-                    Phí giao hàng:
-                  </Typography>
-                  <Typography variant="body2" fontWeight={600}>
-                    {orderData.deliveryFee === 0 ? 'Miễn phí' : formatPrice(orderData.deliveryFee)}
-                  </Typography>
-                </Stack>
                 <Divider />
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                   <Stack direction="row" spacing={1} alignItems="center">
+                    <Typography variant="body2" fontWeight={600}>
+                      Quán nhận về:
+                    </Typography>
                     <Typography variant="body2" color="text.secondary">
                       {orderData.paymentMethod === 'cash' ? '💵 Tiền mặt' : '💳 Chuyển khoản'}
                     </Typography>
                   </Stack>
-                  <Typography variant="h6" color="primary.main" fontWeight={700}>
-                    {formatPrice(orderData.finalTotal)}
+                  <Typography variant="h6" color="success.main" fontWeight={700}>
+                    {formatPrice(orderData.restaurantRevenue || orderData.total)}
                   </Typography>
                 </Stack>
               </Stack>

@@ -7,8 +7,8 @@ import { useCustomerAuth } from "@/contexts/AuthContext";
 
 export default function CartPage() {
   const { user } = useCustomerAuth();
-  const token = typeof window !== 'undefined' ? localStorage.getItem('eatnow_token') : null;
-  const { data: cartData, loading: cartLoading, error: cartError } = useCart(token);
+  // Cookie-based auth: no need to get token from localStorage
+  const { data: cartData, loading: cartLoading, error: cartError } = useCart(null);
   
   const [cartItems, setCartItems] = useState<any[]>([]);
   const [deliveryFee] = useState(15000);

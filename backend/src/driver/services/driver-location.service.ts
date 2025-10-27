@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Driver, DriverDocument } from '../schemas/driver.schema';
-import { Order, OrderDocument } from '../../order/schemas/order.schema';
+import { Order, OrderDocument, OrderStatus } from '../../order/schemas/order.schema';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { OptimizedNotificationGateway } from '../../notification/optimized-notification.gateway';
 
@@ -37,7 +37,7 @@ export class DriverLocationService {
       // Check if driver is currently delivering an order
       const currentOrder = await this.orderModel.findOne({
         driverId: driverId,
-        status: { $in: ['confirmed', 'preparing', 'ready'] }
+        status: { $in: [OrderStatus.CONFIRMED, OrderStatus.READY] }
       }).populate('userId', 'name');
 
       if (currentOrder && (currentOrder as any).userId) {

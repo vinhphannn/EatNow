@@ -37,15 +37,6 @@ export class AuthController {
       path: '/',
     });
     
-    // Also set generic access_token for backward compatibility
-    res.cookie('access_token', result.access_token, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: false,
-      maxAge: 60 * 60 * 1000,
-      path: '/',
-    });
-    
     // Set role indicator cookie
     const roleCookie = `${result.user.role}_token`.toLowerCase();
     res.cookie(roleCookie, '1', {
@@ -91,42 +82,24 @@ export class AuthController {
       path: '/auth',
     });
     
-    // Also set generic cookies for backward compatibility
-    res.cookie('access_token', result.access_token, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 15 * 60 * 1000,
-      path: '/',
-    });
-    res.cookie('refresh_token', result.refresh_token, {
-      httpOnly: true,
-      sameSite: 'strict',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-      path: '/auth',
-    });
-    res.cookie('csrf_token', result.csrf || '', {
-      httpOnly: false,
-      sameSite: 'strict',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-      path: '/auth',
-    });
-    
     return { access_token: result.access_token };
   }
 
   @Post('logout')
   @ApiOkResponse({ schema: { properties: { success: { type: 'boolean', example: true } } } })
   async logout(@Request() req, @Res({ passthrough: true }) res: Response) {
-    // Clear cookies
-    res.clearCookie('access_token', { path: '/' });
-    res.clearCookie('admin_token', { path: '/' });
-    res.clearCookie('restaurant_token', { path: '/' });
-    res.clearCookie('customer_token', { path: '/' });
-    res.clearCookie('driver_token', { path: '/' });
-    res.clearCookie('refresh_token', { path: '/auth' });
+    // Clear all role-specific cookies
+    const roles = ['customer', 'restaurant', 'driver', 'admin'];
+    
+    roles.forEach(role => {
+      // Clear role-specific access tokens
+      res.clearCookie(`${role}_access_token`, { path: '/' });
+      res.clearCookie(`${role}_refresh_token`, { path: '/auth' });
+      res.clearCookie(`${role}_csrf_token`, { path: '/auth' });
+      // Clear role indicator cookies
+      res.clearCookie(`${role}_token`, { path: '/' });
+    });
+    
     try { await this.auth.revokeCurrentRefreshToken(req); } catch {}
     return { success: true };
   }
@@ -136,9 +109,10 @@ export class AuthController {
   @ApiCreatedResponse({ type: LoginResponseDto })
   async register(@Body() body: RegisterDto, @Res({ passthrough: true }) res: Response) {
     const result = await this.auth.register(body.email, body.password, body.name, body.phone as any, body.role);
+    const cookieNames = this.getCookieNames(result.user.role);
     
-    // Set HttpOnly cookies
-    res.cookie('access_token', result.access_token, {
+    // Set role-specific access token cookie
+    res.cookie(cookieNames.accessToken, result.access_token, {
       httpOnly: true,
       sameSite: 'lax',
       secure: false,
@@ -146,7 +120,7 @@ export class AuthController {
       path: '/',
     });
     
-    // Set role-specific cookie
+    // Set role indicator cookie
     const roleCookie = `${result.user.role}_token`.toLowerCase();
     res.cookie(roleCookie, '1', {
       httpOnly: true,
@@ -164,8 +138,22 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOkResponse({ type: UserDto })
   async getProfile(@Request() req) {
+    // Extract role from URL context (pathname)
+    const pathname = req.url || req.path || '';
+    let requiredRole: string | undefined;
+    
+    if (pathname.includes('/admin/')) {
+      requiredRole = 'admin';
+    } else if (pathname.includes('/customer/')) {
+      requiredRole = 'customer';
+    } else if (pathname.includes('/restaurant/')) {
+      requiredRole = 'restaurant';
+    } else if (pathname.includes('/driver/')) {
+      requiredRole = 'driver';
+    }
+    
     // If you want strict JWT validation from cookie, verify in a guard or here
-    return this.auth.getProfileFromCookie(req);
+    return this.auth.getProfileFromCookie(req, requiredRole);
   }
 }
 

@@ -35,10 +35,10 @@ const statusConfig = {
     cancelled: { label: 'Đã hủy', color: 'bg-red-100 text-red-800', icon: '❌' },
 };
 
-// Helper to read token safely on client
+// Helper to get auth info - deprecated, use AuthContext instead
 const getToken = () => {
-  if (typeof window === 'undefined') return null;
-  try { return localStorage.getItem('eatnow_token'); } catch { return null; }
+  console.warn('getToken is deprecated. Use AuthContext for authentication.');
+  return null;
 };
 
 export default function DriverCurrentPage() {
@@ -49,7 +49,7 @@ export default function DriverCurrentPage() {
     async function load() {
         try {
             setLoading(true);
-            console.log('Loading driver orders...');
+            console.log('📦 Loading driver orders...');
             
             // Load all orders for this driver (backend already filters by driverId)
             const res: any = await driverService.getMyOrders({ 
@@ -57,8 +57,9 @@ export default function DriverCurrentPage() {
                 page: 1, 
                 limit: 100 
             });
-            console.log('Driver orders response:', res);
+            console.log('📦 Driver orders API response:', res);
             const allOrders: any[] = Array.isArray(res) ? res : res?.orders || [];
+            console.log('📦 All orders array length:', allOrders.length);
             
             // Filter to only show incomplete orders (not delivered or cancelled)
             const incompleteOrders = allOrders.filter((order: any) => {
@@ -74,16 +75,16 @@ export default function DriverCurrentPage() {
                 code: o.orderNumber || o.code || o.id,
                 pickup: o.restaurantId?.name || o.restaurantName || "",
                 dropoff: o.customerId?.name || o.customerName || o.deliveryAddress?.recipientName || "",
-                cod: typeof o.cod === 'number' ? o.cod : (o.paymentMethod === 'COD' ? (o.finalTotal || o.totalAmount || 0) : 0),
+                cod: typeof o.cod === 'number' ? o.cod : (o.paymentMethod === 'COD' ? (o.finalTotal || o.customerPayment || 0) : 0),
                 status: o.status || "picking_up",
-                totalAmount: o.totalAmount || o.total || 0,
+                totalAmount: o.finalTotal || o.customerPayment || 0,
                 deliveryFee: o.deliveryFee || 0,
-                subtotal: o.subtotal || o.itemsTotal || 0,
+                subtotal: o.subtotal || 0,
                 tax: o.tax || 0,
-                discount: o.discount || 0,
+                discount: 0, // Không còn discount trong order mới
                 createdAt: o.createdAt,
                 restaurantAddress: o.restaurantId?.address || o.restaurantAddress || "",
-                customerAddress: o.deliveryAddress?.addressLine || o.customerAddress || "",
+                customerAddress: o.deliveryAddress?.addressLine || o.deliveryAddress?.address || o.customerAddress || "",
                 customerPhone: o.customerId?.phone || o.deliveryAddress?.recipientPhone || o.customerPhone || "",
                 restaurantPhone: o.restaurantId?.phone || o.restaurantPhone || "",
                 items: o.items || [],

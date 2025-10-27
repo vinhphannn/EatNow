@@ -21,9 +21,10 @@ interface Order {
     subtotal: number;
     specialInstructions?: string;
   }>;
-  total: number;
+  subtotal: number; // Tiền món ăn
   deliveryFee: number;
-  finalTotal: number;
+  finalTotal: number; // Tổng tiền khách trả
+  restaurantRevenue: number; // Tiền quán nhận được (sau khi trừ phí platform)
   deliveryAddress: string | {
     label: string;
     addressLine: string;
@@ -80,6 +81,11 @@ export default function RestaurantOrdersPage() {
   
   // Setup restaurant notifications
   const { socket, connected } = useRestaurantNotifications(restaurantId || '');
+  
+  // Debug socket connection
+  useEffect(() => {
+    console.log('🔌 Socket connection status:', { socket: !!socket, connected, restaurantId });
+  }, [socket, connected, restaurantId]);
 
   // Get restaurant ID from API (cookie-based auth)
   useEffect(() => {
@@ -149,6 +155,7 @@ export default function RestaurantOrdersPage() {
 
   // Listen for order updates
   useEffect(() => {
+    console.log('🔌 Socket listener setup - socket:', !!socket, 'connected:', connected);
     if (socket && connected) {
       console.log('🔌 Setting up Socket.IO listeners for restaurant orders');
       const onStatus = (payload: any) => {
@@ -159,84 +166,80 @@ export default function RestaurantOrdersPage() {
         loadOrders();
       };
 
-      const onNewOrder = (payload: any) => {
+
+      // Simple handler: just get orderId from notification and fetch full data
+      const onNewNotification = async (payload: any) => {
+        console.log('🔔 Got new notification signal:', payload);
+        
+        // Get orderId from payload
+        const orderId = payload.orderId;
+        if (!orderId) {
+          console.error('❌ No orderId in notification');
+          return;
+        }
+        
+        console.log('📥 Fetching order data for:', orderId);
+        
+        // Fetch full order data from API
         try {
-          console.log('🆕 New order received:', payload);
-          const order = payload.order || payload;
-          const orderCode = order?.orderCode || order?.id || 'đơn hàng';
-          
-          // Show popup notification with full order details
-          console.log('📋 Showing popup for order:', order);
-          console.log('📋 Order items:', order.items);
-          console.log('📋 Order customer:', order.customerId);
-          console.log('📋 Order total:', order.total);
-          console.log('📋 Order delivery address:', order.deliveryAddress);
-          
-          // Ensure we have all necessary data for the popup
-          const enrichedOrder = {
-            ...order,
-            // Add fallbacks for missing data
-            items: order.items || order.orderItems || [],
-            total: order.total || order.subtotal || 0,
-            deliveryAddress: order.deliveryAddress || order.delivery_address || 'Địa chỉ chưa cập nhật',
-            recipientName: order.recipientName || order.recipient_name || order.customerId?.name || 'Chưa cập nhật',
-            recipientPhonePrimary: order.recipientPhonePrimary || order.recipient_phone || order.customerId?.phone || 'Chưa cập nhật'
-          };
-          
-          setNewOrderPopup({
-            open: true,
-            order: enrichedOrder
+          const response = await fetch(`${api}/api/v1/orders/${orderId}`, {
+            credentials: 'include'
           });
           
-          showToast(`🆕 Có đơn hàng mới! Mã: ${orderCode}`, 'success');
-          
-          // Reload orders to show the new order
-          loadOrders();
-          
-          // Play continuous notification sound until accepted
-          if (typeof window !== 'undefined' && 'Audio' in window) {
-            try {
-              // Stop any existing sound first
-              if (notificationSound) {
-                notificationSound.pause();
-                notificationSound.currentTime = 0;
-              }
-              
-              const audio = new Audio('/notify.mp3');
-              audio.volume = 0.7;
-              audio.loop = true; // Loop until accepted
-              
-              // Add event listeners for debugging
-              audio.addEventListener('loadstart', () => console.log('🔊 Audio loading started'));
-              audio.addEventListener('canplay', () => console.log('🔊 Audio can play'));
-              audio.addEventListener('error', (e) => console.error('🔊 Audio error:', e));
-              
-              const playPromise = audio.play();
-              if (playPromise !== undefined) {
-                playPromise.then(() => {
-                  console.log('🔊 Audio playing successfully');
+          if (response.ok) {
+            const orderData = await response.json();
+            console.log('✅ Got order data:', orderData);
+            
+            // Show popup
+            setNewOrderPopup({
+              open: true,
+              order: orderData
+            });
+            
+            showToast(`🆕 Có đơn hàng mới!`, 'success');
+            
+            // Play sound
+            if (typeof window !== 'undefined' && 'Audio' in window) {
+              try {
+                if (notificationSound) {
+                  notificationSound.pause();
+                  notificationSound.currentTime = 0;
+                }
+                
+                const audio = new Audio('/notify.mp3');
+                audio.volume = 0.7;
+                audio.loop = true;
+                
+                audio.play().then(() => {
                   setNotificationSound(audio);
-                }).catch((error) => {
-                  console.error('🔊 Audio play failed:', error);
-                });
+                }).catch(() => {});
+              } catch (e) {
+                console.error('🔊 Sound error:', e);
               }
-            } catch (e) {
-              console.error('🔊 Could not play notification sound:', e);
             }
+          } else {
+            console.error('❌ Failed to fetch order:', response.status);
+            showToast('🆕 Có đơn hàng mới!', 'success');
           }
         } catch (error) {
-          console.error('Error handling new order:', error);
+          console.error('❌ Error:', error);
+          showToast('🆕 Có đơn hàng mới!', 'success');
         }
       };
 
       socket.on('order_status_update:v1', onStatus);
-      socket.on('new_order:v1', onNewOrder);
+      console.log('✅ Listening for order_status_update:v1');
+      
+      socket.on('new_notification:v1', onNewNotification);
+      console.log('✅ Listening for new_notification:v1');
       
       return () => {
         console.log('🧹 Cleaning up Socket.IO listeners');
         socket.off('order_status_update:v1', onStatus);
-        socket.off('new_order:v1', onNewOrder);
+        socket.off('new_notification:v1', onNewNotification);
       };
+    } else {
+      console.log('❌ Socket or not connected, skipping listener setup');
     }
   }, [socket, connected, showToast]);
 
@@ -265,8 +268,9 @@ export default function RestaurantOrdersPage() {
               _id: o._id || o.id,
               customerId: o.customerId,
               customer: o.customer,
-              total: o.total,
+              subtotal: o.subtotal,
               finalTotal: o.finalTotal,
+              restaurantRevenue: o.restaurantRevenue,
               items: o.items,
               deliveryAddress: o.deliveryAddress,
               recipientName: o.recipientName,
@@ -295,11 +299,42 @@ export default function RestaurantOrdersPage() {
               };
             }
             
-            // Calculate finalTotal properly
+            // Ensure subtotal exists - derive from items if missing
+            if (!o.subtotal) {
+              try {
+                const items = Array.isArray(o.items) ? o.items : [];
+                const derivedSubtotal = items.reduce((sum: number, it: any) => {
+                  const itemSubtotal =
+                    (typeof it.subtotal === 'number' ? it.subtotal : 0) ||
+                    (typeof it.totalPrice === 'number' ? it.totalPrice : 0) ||
+                    (typeof it.price === 'number' && typeof it.quantity === 'number' ? it.price * it.quantity : 0);
+                  return sum + (itemSubtotal || 0);
+                }, 0);
+                o.subtotal = derivedSubtotal;
+              } catch {}
+            }
+
+            // Calculate finalTotal properly (use subtotal instead of total)
             if (!o.finalTotal) {
-              const total = o.total || 0;
+              const subtotal = o.subtotal || 0;
               const deliveryFee = o.deliveryFee || 0;
-              o.finalTotal = total + deliveryFee;
+              const tip = o.tip || 0;
+              const doorFee = o.doorFee || 0;
+              o.finalTotal = subtotal + deliveryFee + tip + doorFee;
+            }
+
+            // Ensure restaurantRevenue exists - derive from platformFee when available
+            if (typeof o.restaurantRevenue !== 'number') {
+              const subtotal = o.subtotal || 0;
+              if (typeof o.platformFeeAmount === 'number') {
+                o.restaurantRevenue = subtotal - o.platformFeeAmount;
+              } else if (typeof o.platformFeeRate === 'number') {
+                const platformFee = Math.round(subtotal * (o.platformFeeRate / 100));
+                o.restaurantRevenue = subtotal - platformFee;
+              } else {
+                // Fallback: show subtotal as approximation to avoid empty UI
+                o.restaurantRevenue = subtotal;
+              }
             }
             
             if (!o._id && o.id) {
@@ -357,7 +392,7 @@ export default function RestaurantOrdersPage() {
   const updateOrderStatus = async (orderId: string, newStatus: string) => {
     setUpdating(orderId);
     try {
-      const token = localStorage.getItem('eatnow_token');
+      // Cookie-based auth: no need to get token from localStorage
       
       // Stop notification sound when accepting order
       if (notificationSound) {
@@ -628,7 +663,7 @@ export default function RestaurantOrdersPage() {
                         </Stack>
                       </Box>
 
-                      {/* Số món và tổng tiền món ăn */}
+                      {/* Số món và tổng tiền */}
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                         <Box textAlign="center">
                           <Typography variant="body2" color="text.secondary">
@@ -640,10 +675,18 @@ export default function RestaurantOrdersPage() {
                         </Box>
                         <Box textAlign="center">
                           <Typography variant="body2" color="text.secondary">
-                            Tổng món ăn:
+                            Tiền món:
                           </Typography>
                           <Typography variant="h6" fontWeight={600} color="primary.main">
-                            ₫{(order.total || 0).toLocaleString('vi-VN')}
+                            ₫{(order.subtotal || 0).toLocaleString('vi-VN')}
+                          </Typography>
+                        </Box>
+                        <Box textAlign="center">
+                          <Typography variant="body2" color="text.secondary">
+                            Quán nhận:
+                          </Typography>
+                          <Typography variant="h6" fontWeight={600} color="success.main">
+                            ₫{(order.restaurantRevenue || order.subtotal || 0).toLocaleString('vi-VN')}
                           </Typography>
                         </Box>
                       </Box>

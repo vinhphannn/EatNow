@@ -1,5 +1,11 @@
 /**
  * Order data transformation utilities
+ * 
+ * IMPORTANT SECURITY UPDATE:
+ * - Frontend chỉ gửi dữ liệu cơ bản (items, address, tip, etc.)
+ * - Backend sẽ tính toán tất cả pricing, discounts, và totals
+ * - Điều này đảm bảo tính toán chính xác và bảo mật
+ * - Frontend không thể manipulate giá cả hoặc chiết khấu
  */
 
 export interface CartItem {
@@ -70,10 +76,11 @@ export interface OrderData {
   specialInstructions?: string;
   mode: 'immediate' | 'scheduled';
   scheduledAt?: string;
-  tip: number;
-  doorFee: number;
+  tip: number; // Driver tip
+  doorFee: boolean; // Whether to enable door delivery
+  deliveryFee: number; // Delivery fee calculated on frontend (matching display)
   voucherCode?: string;
-  totals: OrderTotals;
+  // Note: Backend will verify the delivery fee matches its calculation
 }
 
 /**
@@ -144,7 +151,7 @@ export const calculateOrderTotals = (
 };
 
 /**
- * Create complete order data
+ * Create complete order data (simplified for backend calculation)
  */
 export const createOrderData = (
   restaurantId: string,
@@ -161,11 +168,10 @@ export const createOrderData = (
   doorFee: boolean,
   driverTip: number,
   voucherCode: string | undefined,
-  deliveryFee: number
+  deliveryFee: number // This will be recalculated on backend for security
 ): OrderData => {
   const items = transformCartItemsToOrderItems(cartItems);
   const formattedDeliveryAddress = formatDeliveryAddress(selectedAddress, deliveryAddress);
-  const totals = calculateOrderTotals(cartItems, deliveryFee, tip, doorFee, driverTip);
   
   return {
     restaurantId,
@@ -179,10 +185,11 @@ export const createOrderData = (
     specialInstructions: specialInstructions || undefined,
     mode: deliveryMode,
     scheduledAt: deliveryMode === 'scheduled' ? scheduledAt : undefined,
-    tip: driverTip, // Sử dụng driverTip thay vì tip
-    doorFee: doorFee ? 5000 : 0,
+    tip: driverTip, // Driver tip amount
+    doorFee: doorFee, // Boolean flag for door delivery
+    deliveryFee: deliveryFee, // Delivery fee matching frontend display
     voucherCode: voucherCode || undefined,
-    totals
+    // Note: Backend will verify delivery fee matches its calculation
   };
 };
 

@@ -156,7 +156,7 @@ export class DriverOrderController {
       }
 
       // Update order status
-      await this.driverOrderService.updateOrderStatus(orderId, OrderStatus.PREPARING, driverId);
+      await this.driverOrderService.updateOrderStatus(orderId, OrderStatus.CONFIRMED, driverId);
 
       this.logger.log(`Driver ${driverId} arrived at restaurant for order ${orderId}`);
 
@@ -332,6 +332,215 @@ export class DriverOrderController {
       return {
         success: false,
         message: 'Failed to update location'
+      };
+    }
+  }
+
+  /**
+   * Driver check in/check out
+   * POST /api/v1/driver/orders/checkin
+   * POST /api/v1/driver/orders/checkout
+   */
+  @Post('checkin')
+  async checkIn(@Request() req) {
+    try {
+      const driverId = req.user.id;
+
+      // Tìm driver theo userId
+      const driver = await this.driverModel.findOne({ userId: driverId });
+      if (!driver) {
+        return {
+          success: false,
+          message: 'Driver not found'
+        };
+      }
+
+      // Kiểm tra trạng thái hiện tại
+      this.logger.log(`Current driver status: ${driver.status}`);
+      
+      if (driver.status === 'checkin') {
+        this.logger.log('Driver is already checked in, returning current status');
+        return {
+          success: true,
+          message: 'Driver is already checked in',
+          status: 'checkin'
+        };
+      }
+
+      if (driver.status === 'ban') {
+        return {
+          success: false,
+          message: 'Driver is banned and cannot check in'
+        };
+      }
+
+      // Cập nhật trạng thái checkin
+      await this.driverModel.findByIdAndUpdate(driver._id, {
+        status: 'checkin',
+        lastCheckinAt: new Date()
+      });
+
+      // Register driver trên Redis GEO nếu có location
+      if (driver.location && driver.location.length === 2) {
+        const [lng, lat] = driver.location;
+        await this.driverPresenceService.registerDriver(
+          driver._id.toString(),
+          { latitude: lat, longitude: lng }
+        );
+        this.logger.log(`✅ Driver ${driverId} registered to Redis GEO at ${lat}, ${lng}`);
+      } else {
+        this.logger.warn(`⚠️ Driver ${driverId} checked in but has no location. Please update location first.`);
+      }
+
+      this.logger.log(`Driver ${driverId} checked in`);
+
+      return {
+        success: true,
+        message: 'Checked in successfully',
+        status: 'checkin'
+      };
+
+    } catch (error) {
+      this.logger.error('Failed to check in driver:', error);
+      return {
+        success: false,
+        message: 'Failed to check in'
+      };
+    }
+  }
+
+  @Post('checkout')
+  async checkOut(@Request() req) {
+    try {
+      const driverId = req.user.id;
+
+      // Tìm driver theo userId
+      const driver = await this.driverModel.findOne({ userId: driverId });
+      if (!driver) {
+        return {
+          success: false,
+          message: 'Driver not found'
+        };
+      }
+
+      // Kiểm tra trạng thái hiện tại
+      this.logger.log(`Current driver status: ${driver.status}`);
+      
+      if (driver.status === 'checkout') {
+        this.logger.log('Driver is already checked out, returning current status');
+        return {
+          success: true,
+          message: 'Driver is already checked out',
+          status: 'checkout'
+        };
+      }
+
+      // Kiểm tra tài xế có đang giao hàng không
+      if (driver.deliveryStatus === 'delivering' || driver.currentOrderId) {
+        return {
+          success: false,
+          message: 'Cannot check out while delivering an order'
+        };
+      }
+
+      // Cập nhật trạng thái checkout
+      await this.driverModel.findByIdAndUpdate(driver._id, {
+        status: 'checkout',
+        lastCheckoutAt: new Date()
+      });
+
+      this.logger.log(`Driver ${driverId} checked out`);
+
+      return {
+        success: true,
+        message: 'Checked out successfully',
+        status: 'checkout'
+      };
+
+    } catch (error) {
+      this.logger.error('Failed to check out driver:', error);
+      return {
+        success: false,
+        message: 'Failed to check out'
+      };
+    }
+  }
+
+  /**
+   * Lấy trạng thái hiện tại của driver
+   * GET /api/v1/driver/orders/get-status
+   */
+  @Get('get-status')
+  async getStatus(@Request() req) {
+    try {
+      const driverId = req.user.id;
+      this.logger.log(`Getting status for driver userId: ${driverId}`);
+
+      // Tìm driver theo userId
+      const driver = await this.driverModel.findOne({ userId: driverId });
+      this.logger.log(`Driver found: ${!!driver}, status: ${driver?.status}`);
+      
+      if (!driver) {
+        this.logger.warn(`Driver not found for userId: ${driverId}, creating new driver profile`);
+        
+        // Tự động tạo driver profile nếu chưa có
+        const newDriver = await this.driverModel.create({
+          userId: driverId,
+          status: 'checkout', // Mặc định checkout
+          deliveryStatus: null,
+          location: [0, 0],
+          lastLocationAt: new Date(),
+          ordersCompleted: 0,
+          ordersRejected: 0,
+          ordersSkipped: 0,
+          rating: 0,
+          ratingCount: 0,
+          onTimeDeliveries: 0,
+          lateDeliveries: 0,
+          totalDeliveries: 0,
+          averageDeliveryTime: 0,
+          performanceScore: 0,
+          activeOrdersCount: 0,
+          maxConcurrentOrders: 1,
+          averageDistancePerOrder: 0,
+          totalDistanceTraveled: 0,
+          walletBalance: 0
+        });
+
+        this.logger.log(`Created new driver profile: ${newDriver._id}`);
+        
+        return {
+          success: true,
+          data: {
+            status: newDriver.status,
+            deliveryStatus: newDriver.deliveryStatus,
+            currentOrderId: null,
+            lastCheckinAt: null,
+            lastCheckoutAt: null
+          }
+        };
+      }
+
+      const statusData = {
+        status: driver.status,
+        deliveryStatus: driver.deliveryStatus,
+        currentOrderId: driver.currentOrderId ? String(driver.currentOrderId) : null,
+        lastCheckinAt: driver.lastCheckinAt,
+        lastCheckoutAt: driver.lastCheckoutAt
+      };
+
+      this.logger.log(`Returning status data:`, statusData);
+
+      return {
+        success: true,
+        data: statusData
+      };
+
+    } catch (error) {
+      this.logger.error('Failed to get driver status:', error);
+      return {
+        success: false,
+        message: 'Failed to get status'
       };
     }
   }

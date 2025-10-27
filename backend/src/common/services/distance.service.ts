@@ -79,4 +79,41 @@ export class DistanceService {
     const extraKm = Math.ceil(distanceKm - 4);
     return baseFee + (extraKm * perKmFee);
   }
+
+  /**
+   * Calculate route distance using OSRM routing API (actual road distance)
+   * @param from Starting location
+   * @param to Destination location
+   * @returns Distance in kilometers
+   */
+  async calculateRouteDistanceKm(from: { lat: number; lng: number }, to: { lat: number; lng: number }): Promise<number> {
+    try {
+      // Use OSRM API to get actual road distance (same as frontend)
+      const response = await fetch(
+        `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`
+      );
+      
+      if (!response.ok) {
+        console.warn('OSRM API failed, falling back to Haversine distance');
+        return this.calculateDistanceKm(from.lat, from.lng, to.lat, to.lng);
+      }
+      
+      const data = await response.json();
+      
+      if (data.routes && data.routes.length > 0) {
+        const distanceInMeters = data.routes[0].distance;
+        const distanceKm = distanceInMeters / 1000;
+        console.log(`Route distance: ${distanceKm.toFixed(2)}km`);
+        return distanceKm;
+      }
+      
+      // Fallback to Haversine if no route found
+      console.warn('No route found in OSRM response, using Haversine distance');
+      return this.calculateDistanceKm(from.lat, from.lng, to.lat, to.lng);
+    } catch (error) {
+      console.error('Error calculating route distance:', error);
+      // Fallback to Haversine on error
+      return this.calculateDistanceKm(from.lat, from.lng, to.lat, to.lng);
+    }
+  }
 }

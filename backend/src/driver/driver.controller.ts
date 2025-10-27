@@ -97,6 +97,12 @@ export class DriverController {
       status,
     });
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('me/status')
+  async getMyStatus(@Req() req: any) {
+    return this.driverService.getDriverStatus(req.user?.id);
+  }
 }
 
 

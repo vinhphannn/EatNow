@@ -858,7 +858,7 @@ export class RestaurantService {
       // Calculate stats
       const todayOrdersCount = todayOrders.length;
       const todayRevenue = todayOrders.reduce((sum, order) => {
-        return sum + (order.finalTotal || order.total || 0);
+        return sum + (order.finalTotal || 0);
       }, 0);
 
       // Get pending orders count
@@ -911,7 +911,9 @@ export class RestaurantService {
           _id: o._id,
           deliveryAddress: o.deliveryAddress,
           recipientName: o.deliveryAddress?.recipientName,
-          recipientPhone: o.deliveryAddress?.recipientPhone
+          recipientPhone: o.deliveryAddress?.recipientPhone,
+          subtotal: o.subtotal,
+          restaurantRevenue: o.restaurantRevenue
         });
         
         return {
@@ -931,9 +933,18 @@ export class RestaurantService {
         },
         items: o.items,
         status: o.status,
-        total: o.total || 0,
-        finalTotal: o.finalTotal || o.total || 0,
+        subtotal: o.subtotal || 0, // Tiền món ăn
         deliveryFee: o.deliveryFee || 0,
+        tip: o.tip || 0,
+        doorFee: o.doorFee || 0,
+        finalTotal: o.finalTotal || 0, // Tổng tiền khách trả
+        restaurantRevenue: o.restaurantRevenue || 0, // Tiền quán nhận được
+        customerPayment: o.customerPayment || o.finalTotal || 0, // Tiền khách trả
+        driverPayment: o.driverPayment || 0, // Tiền tài xế nhận
+        platformFeeRate: o.platformFeeRate || 0, // % phí platform
+        platformFeeAmount: o.platformFeeAmount || 0, // Số tiền phí platform
+        driverCommissionRate: o.driverCommissionRate || 0, // % chiết khấu tài xế
+        driverCommissionAmount: o.driverCommissionAmount || 0, // Số tiền chiết khấu tài xế
         deliveryAddress: o.deliveryAddress,
         recipientName: o.deliveryAddress?.recipientName,
         recipientPhonePrimary: o.deliveryAddress?.recipientPhone,
@@ -941,6 +952,8 @@ export class RestaurantService {
         paymentMethod: o.paymentMethod,
         createdAt: o.createdAt,
         updatedAt: o.updatedAt,
+        estimatedDeliveryTime: o.estimatedDeliveryTime,
+        deliveryDistance: o.deliveryDistance,
         driverId: o.driverId ? { _id: (o.driverId as any)._id, name: (o.driverId as any).name, phone: (o.driverId as any).phone } : undefined,
         };
       }),

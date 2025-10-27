@@ -54,9 +54,8 @@ export class DriverOrderService {
     const to = status;
     const driverAllowed: Record<OrderStatus, OrderStatus[]> = {
       [OrderStatus.PENDING]: [OrderStatus.PENDING],
-      [OrderStatus.CONFIRMED]: [OrderStatus.PREPARING], // arrived-restaurant
-      [OrderStatus.PREPARING]: [OrderStatus.READY],     // picked-up
-      [OrderStatus.READY]: [OrderStatus.DELIVERED],     // arrived-customer -> delivered via flow
+      [OrderStatus.CONFIRMED]: [OrderStatus.READY],     // ready to pickup
+      [OrderStatus.READY]: [OrderStatus.DELIVERED],     // delivered
       [OrderStatus.DELIVERED]: [OrderStatus.DELIVERED],
       [OrderStatus.CANCELLED]: [OrderStatus.CANCELLED],
     } as any;
@@ -118,11 +117,9 @@ export class DriverOrderService {
   private getStatusNote(status: OrderStatus): string {
     switch (status) {
       case OrderStatus.CONFIRMED:
-        return 'Tài xế đã nhận đơn';
-      case OrderStatus.PREPARING:
-        return 'Tài xế đã đến nhà hàng';
+        return 'Nhà hàng đã xác nhận và đang chuẩn bị';
       case OrderStatus.READY:
-        return 'Tài xế đã lấy đơn hàng';
+        return 'Sẵn sàng lấy đơn hàng';
       case OrderStatus.DELIVERED:
         return 'Tài xế đã giao hàng thành công';
       default:

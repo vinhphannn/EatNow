@@ -44,11 +44,8 @@ export default function CustomerRegisterPage() {
       });
 
       if (response.ok) {
+        // Cookie-based session: cookies are automatically set by backend
         const data = await response.json();
-        localStorage.setItem('eatnow_token', data.access_token);
-        localStorage.setItem('eatnow_refresh_token', data.refresh_token || data.access_token);
-        localStorage.setItem('eatnow_user_data', JSON.stringify(data.user));
-        localStorage.setItem('eatnow_token_expires', (Date.now() + 3600000).toString()); // 1 hour
         
         // Redirect to home page
         router.push('/customer/home');

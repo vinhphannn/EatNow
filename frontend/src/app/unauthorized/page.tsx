@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { AuthManager } from "@/utils/authManager";
+import { authService } from "@/services/auth.service";
 
 export default function UnauthorizedPage() {
   const { user, logout } = useAuth();
@@ -12,8 +14,20 @@ export default function UnauthorizedPage() {
   };
 
   const handleLogout = async () => {
-    await logout();
-    router.push('/');
+    try {
+      // Call API logout first
+      await authService.logout();
+      
+      // Call context logout to clear state
+      await logout();
+      
+      // Force page reload to clear any cached state
+      window.location.href = '/';
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Force redirect even if logout fails
+      window.location.href = '/';
+    }
   };
 
   return (

@@ -70,6 +70,20 @@ export class Driver {
   lastLocationAt?: Date;
 
   /**
+   * Thời gian check in cuối cùng
+   * Dùng để theo dõi lịch sử làm việc
+   */
+  @Prop({ type: Date, default: null })
+  lastCheckinAt?: Date;
+
+  /**
+   * Thời gian check out cuối cùng
+   * Dùng để theo dõi lịch sử làm việc
+   */
+  @Prop({ type: Date, default: null })
+  lastCheckoutAt?: Date;
+
+  /**
    * ID đơn hàng hiện tại đang giao
    * - null: Không có đơn hàng (sẵn sàng nhận đơn)
    * - ObjectId: Đang giao đơn hàng này

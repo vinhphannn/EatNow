@@ -2,8 +2,10 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { AdminGuard } from '@/components/guards/AuthGuard';
+import { useAdminAuth } from '@/hooks/useAdminAuth';
+import { toast } from 'react-hot-toast';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faTachometerAlt,
@@ -112,6 +114,8 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, logout } = useAdminAuth();
 
   const toggleExpanded = (title: string) => {
     setExpandedItems(prev => 
@@ -126,6 +130,16 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
       return pathname === href;
     }
     return pathname.startsWith(href);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      toast.success('Đăng xuất thành công!');
+    } catch (error) {
+      console.error('Logout error:', error);
+      toast.error('Có lỗi xảy ra khi đăng xuất');
+    }
   };
 
   return (
@@ -232,14 +246,22 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
         {/* User info */}
         <div className="p-4 border-t border-gray-200 flex-shrink-0">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
-              <FontAwesomeIcon icon={faUser} className="w-4 h-4 text-gray-600" />
+            <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center">
+              <FontAwesomeIcon icon={faUser} className="w-4 h-4 text-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">Admin User</p>
-              <p className="text-xs text-gray-500 truncate">admin@eatnow.vn</p>
+              <p className="text-sm font-medium text-gray-900 truncate">
+                {user?.name || 'Admin User'}
+              </p>
+              <p className="text-xs text-gray-500 truncate">
+                {user?.email || 'admin@eatnow.vn'}
+              </p>
             </div>
-            <button className="p-1 text-gray-400 hover:text-gray-600">
+            <button 
+              onClick={handleLogout}
+              className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+              title="Đăng xuất"
+            >
               <FontAwesomeIcon icon={faSignOutAlt} className="w-4 h-4" />
             </button>
           </div>
@@ -273,8 +295,22 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
               <button className="p-2 text-gray-400 hover:text-gray-600">
                 <FontAwesomeIcon icon={faBell} className="w-5 h-5" />
               </button>
-              <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center">
-                <span className="text-white font-bold text-sm">A</span>
+                <div className="flex items-center space-x-3">
+                <div className="text-right hidden sm:block">
+                  <p className="text-sm font-medium text-gray-900">
+                    {user?.name || 'Admin'}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {user?.email || 'admin@eatnow.vn'}
+                  </p>
+                </div>
+                <button 
+                  onClick={handleLogout}
+                  className="p-2 text-gray-400 hover:text-red-600 transition-colors"
+                  title="Đăng xuất"
+                >
+                  <FontAwesomeIcon icon={faSignOutAlt} className="w-4 h-4" />
+                </button>
               </div>
             </div>
           </div>
@@ -290,9 +326,9 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
 }
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  // Bypass guard for the public admin login route
+  // Bypass guard for public routes
   const pathname = usePathname();
-  if (pathname === '/admin/login') {
+  if (pathname === '/admin/login' || pathname === '/admin/debug-cookies' || pathname === '/admin/debug-raw') {
     return <>{children}</>;
   }
   return (

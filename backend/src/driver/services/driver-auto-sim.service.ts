@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Driver, DriverDocument } from '../schemas/driver.schema';
-import { Order, OrderDocument } from '../../order/schemas/order.schema';
+import { Order, OrderDocument, OrderStatus } from '../../order/schemas/order.schema';
 import { DriverLocationService } from './driver-location.service';
 
 type SimHandle = {
@@ -49,16 +49,16 @@ export class DriverAutoSimService {
         let curLng = (d.location?.[0] as number) || lng;
 
         // Move toward a target: restaurant first, then customer if order assigned
-        const current = await this.orderModel.findOne({ driverId: new Types.ObjectId(driverId), status: { $in: ['confirmed','preparing','ready'] } }).lean();
+        const current = await this.orderModel.findOne({ driverId: new Types.ObjectId(driverId), status: { $in: [OrderStatus.CONFIRMED, OrderStatus.READY] } }).lean();
         let targetLat: number | null = null;
         let targetLng: number | null = null;
         if (current) {
-          if (current.status === 'confirmed' || current.status === 'preparing') {
+          if (current.status === OrderStatus.CONFIRMED) {
             // move toward restaurant (fallback to current location if missing)
             const rest = await this.driverModel.db.model('Restaurant').findById(current.restaurantId).lean();
             targetLat = (rest as any)?.latitude ?? curLat;
             targetLng = (rest as any)?.longitude ?? curLng;
-          } else if (current.status === 'ready') {
+          } else if (current.status === OrderStatus.READY) {
             targetLat = (current as any).deliveryAddress?.latitude ?? curLat;
             targetLng = (current as any).deliveryAddress?.longitude ?? curLng;
           }
@@ -88,7 +88,7 @@ export class DriverAutoSimService {
         await this.driverLocationService.updateDriverLocation(driverId, curLat, curLng);
 
         // Try to pick one pending order if driver has none
-        const existing = await this.orderModel.findOne({ driverId: new Types.ObjectId(driverId), status: { $in: ['confirmed','preparing','ready'] } }).lean();
+        const existing = await this.orderModel.findOne({ driverId: new Types.ObjectId(driverId), status: { $in: [OrderStatus.CONFIRMED, OrderStatus.READY] } }).lean();
         if (!existing) {
           const pending = await this.orderModel.findOne({ status: 'pending', driverId: { $exists: false } }).sort({ createdAt: 1 }).lean();
           if (pending) {
@@ -105,14 +105,13 @@ export class DriverAutoSimService {
           // This was causing orders to automatically change status and complete
           // Commented out to prevent automatic order status changes
           /*
-          if (existing.status === 'confirmed' && Math.random() < 0.3) {
+          if (existing.status === OrderStatus.CONFIRMED && Math.random() < 0.3) {
             await this.orderModel.findByIdAndUpdate(existing._id, {
-              status: 'preparing',
-              $push: { trackingHistory: { status: 'preparing', timestamp: new Date(), updatedBy: 'system' } }
+              status: OrderStatus.READY,
+              $push: { trackingHistory: { status: OrderStatus.READY, timestamp: new Date(), updatedBy: 'system' } }
             });
-          } else if (existing.status === 'preparing' && Math.random() < 0.3) {
-            await this.orderModel.findByIdAndUpdate(existing._id, {
-              status: 'ready',
+          } else if (existing.status === OrderStatus.READY) {
+            // Already ready
               $push: { trackingHistory: { status: 'ready', timestamp: new Date(), updatedBy: 'system' } }
             });
           } else if (existing.status === 'ready' && Math.random() < 0.4) {

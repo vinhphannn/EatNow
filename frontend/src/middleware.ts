@@ -17,20 +17,32 @@ export function middleware(request: NextRequest) {
 
   if (!isPublicRoute) {
     if (pathname.startsWith('/driver/')) {
-      const token = request.cookies.get('driver_token');
-      if (!token) return NextResponse.redirect(new URL('/driver/login', request.url));
+      const driverAccessToken = request.cookies.get('driver_access_token');
+      const driverToken = request.cookies.get('driver_token');
+      if (!driverAccessToken || !driverToken) {
+        return NextResponse.redirect(new URL('/driver/login', request.url));
+      }
     }
     if (pathname.startsWith('/customer/')) {
-      const token = request.cookies.get('customer_token');
-      if (!token) return NextResponse.redirect(new URL('/customer/login', request.url));
+      const customerAccessToken = request.cookies.get('customer_access_token');
+      const customerToken = request.cookies.get('customer_token');
+      if (!customerAccessToken || !customerToken) {
+        return NextResponse.redirect(new URL('/customer/login', request.url));
+      }
     }
     if (pathname.startsWith('/restaurant/')) {
-      const token = request.cookies.get('restaurant_token');
-      if (!token) return NextResponse.redirect(new URL('/restaurant/login', request.url));
+      const restaurantAccessToken = request.cookies.get('restaurant_access_token');
+      const restaurantToken = request.cookies.get('restaurant_token');
+      if (!restaurantAccessToken || !restaurantToken) {
+        return NextResponse.redirect(new URL('/restaurant/login', request.url));
+      }
     }
     if (pathname.startsWith('/admin/')) {
-      const token = request.cookies.get('admin_token');
-      if (!token) return NextResponse.redirect(new URL('/admin/login', request.url));
+      const adminAccessToken = request.cookies.get('admin_access_token');
+      const adminToken = request.cookies.get('admin_token');
+      if (!adminAccessToken || !adminToken) {
+        return NextResponse.redirect(new URL('/admin/login', request.url));
+      }
     }
   }
   
@@ -38,5 +50,10 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/driver/:path*', '/customer/:path*', '/restaurant/:path*', '/admin/:path*']
+  matcher: [
+    '/driver/:path*', 
+    '/customer/:path*', 
+    '/restaurant/:path*', 
+    '/admin/:path*'
+  ]
 };

@@ -20,7 +20,7 @@ interface Order {
     quantity: number;
     subtotal: number;
   }>;
-  total: number;
+  subtotal: number;
   deliveryFee: number;
   finalTotal: number;
   deliveryAddress: string;
@@ -52,14 +52,10 @@ export default function OrderDetailPage() {
   const params = useParams();
   const { showToast } = useToast();
 
-  // Get token from localStorage
-  const [token, setToken] = useState<string | null>(null);
+  // Cookie-based auth: no need to get token from localStorage
   const [orderId, setOrderId] = useState<string | null>(null);
   
   useEffect(() => {
-    const storedToken = localStorage.getItem('eatnow_token');
-    setToken(storedToken);
-    
     // Get order ID from params
     if (params?.id && typeof params.id === 'string') {
       setOrderId(params.id);
@@ -67,22 +63,16 @@ export default function OrderDetailPage() {
   }, [params]);
 
   // Sử dụng optimized hook cho order data
-  const { data: order, loading, error, refetch } = useOrder(orderId || '', token);
+  const { data: order, loading, error, refetch } = useOrder(orderId || '', 'cookie-auth');
 
-  // Handle authentication and order ID validation
+  // Handle order ID validation
   useEffect(() => {
-    if (!token) {
-      showToast('Vui lòng đăng nhập để xem đơn hàng', 'error');
-      router.push('/customer/login');
-      return;
-    }
-    
     if (!orderId) {
       showToast('Không tìm thấy ID đơn hàng', 'error');
       router.push('/customer/orders');
       return;
     }
-  }, [token, orderId, showToast, router]);
+  }, [orderId, showToast, router]);
 
   // Handle errors
   useEffect(() => {
@@ -148,7 +138,7 @@ export default function OrderDetailPage() {
   const [cancelling, setCancelling] = useState(false);
 
   const handleCancel = async () => {
-    if (!orderId || !token) return;
+    if (!orderId) return;
     if (!canCancel) {
       showToast('Chỉ có thể hủy khi đơn chưa chuẩn bị hoặc chưa xác nhận', 'info');
       return;
@@ -159,9 +149,9 @@ export default function OrderDetailPage() {
       const res = await fetch(`${api}/orders/${orderId}/cancel`, {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
-        }
+        },
+        credentials: 'include'
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -330,7 +320,7 @@ export default function OrderDetailPage() {
                 <div className="space-y-3">
                   <div className="flex justify-between text-gray-600">
                     <span>Tạm tính:</span>
-                    <span>{order.total.toLocaleString('vi-VN')}đ</span>
+                    <span>{order.subtotal?.toLocaleString('vi-VN') || 0}đ</span>
                   </div>
                   <div className="flex justify-between text-gray-600">
                     <span>Phí giao hàng:</span>
@@ -371,7 +361,7 @@ export default function OrderDetailPage() {
               </div>
 
               {/* Chat with Driver */}
-              <OrderChat orderId={orderId!} token={token!} role={'customer'} />
+              <OrderChat orderId={orderId!} token="cookie-auth" role={'customer'} />
             </div>
           </div>
         </div>

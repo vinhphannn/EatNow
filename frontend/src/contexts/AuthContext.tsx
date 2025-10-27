@@ -176,6 +176,26 @@ export function AuthProvider({ children }: AuthProviderProps) {
       console.error('Logout error:', error);
     } finally {
       dispatch({ type: 'LOGOUT' });
+      
+      // Force refresh auth state after logout
+      setTimeout(async () => {
+        try {
+          const api = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+          const response = await fetch(`${api}/api/v1/auth/me`, {
+            credentials: 'include',
+            method: 'GET',
+          });
+          
+          if (response.ok) {
+            const userData = await response.json();
+            dispatch({ type: 'SET_USER', payload: userData });
+          } else {
+            dispatch({ type: 'SET_USER', payload: null });
+          }
+        } catch (error) {
+          dispatch({ type: 'SET_USER', payload: null });
+        }
+      }, 100);
     }
   };
 

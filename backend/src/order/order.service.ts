@@ -103,14 +103,7 @@ export class OrderService {
     
     // Handle both old and new format
     const { items, paymentMethod, deliveryAddress, specialInstructions, deliveryDistance,
-      recipient, recipientName, recipientPhonePrimary, recipientPhoneSecondary, purchaserPhone, totals } = orderData;
-
-    // Extract totals from frontend data
-    const total = totals?.subtotal || 0;
-    const deliveryFee = totals?.deliveryFee || 0;
-    const tip = totals?.tip || 0;
-    const doorFee = totals?.doorFee || 0;
-    const finalTotal = totals?.finalTotal || (total + deliveryFee + tip + doorFee);
+      recipient, recipientName, recipientPhonePrimary, recipientPhoneSecondary, purchaserPhone } = orderData;
 
     // Extract recipient data from frontend (handle both old and new format)
     const finalRecipientName = recipient?.name || recipientName || '';
@@ -143,40 +136,26 @@ export class OrderService {
         paymentMethod,
         deliveryMode: orderData.mode || 'immediate',
         scheduledAt: orderData.scheduledAt ? new Date(orderData.scheduledAt) : null,
-        tip,
-        doorFee,
-        deliveryFee,
-        voucherCode: orderData.voucherCode || '',
-        specialInstructions
+        tip: orderData.tip || 0,
+        doorFee: orderData.doorFee || false,
+        deliveryFee: orderData.deliveryFee, // Pass deliveryFee from frontend for verification
+        specialInstructions: specialInstructions || ''
       });
 
-      // Try to assign order to best available driver
+      // TÌM TÀI XẾ NGAY KHI TẠO ĐƠN
+      // Vì nhiều quán không dùng app - tài xế sẽ đến đọc món mới làm
       try {
-        await this.orderAssignmentService.assignOrderToDriver(savedOrder._id.toString());
+        this.logger.log(`Order ${savedOrder._id} created - starting immediate driver search`);
+        
+        // Thêm vào Redis queue để tìm tài xế
+        await this.redisService.addPendingOrder(savedOrder._id.toString());
+        this.logger.log(`Order ${savedOrder._id} added to pending orders queue for driver assignment`);
+        
+        // Trigger smart assignment ngay lập tức
+        await this.smartDriverAssignmentService.processPendingOrders();
+        
       } catch (error) {
-        this.logger.error('Failed to assign order to driver', error as any);
-      }
-
-      // Clear the cart for this restaurant after successful order creation
-      try {
-        const cart = await this.cartModel.findOne({
-          userId: new Types.ObjectId(customerId),
-          restaurantId: new Types.ObjectId(savedOrder.restaurantId),
-          status: 'active'
-        });
-
-        if (cart) {
-          // Clear the cart items
-          cart.items = [];
-          cart.totalItems = 0;
-          cart.totalAmount = 0;
-          cart.itemCount = 0;
-          
-          await cart.save();
-          this.logger.log(`Cart cleared after order ${String((savedOrder as any)?._id)} for restaurant ${savedOrder.restaurantId}`);
-        }
-      } catch (e) {
-        this.logger.error('Failed to clear cart after order creation', e as any);
+        this.logger.error(`Failed to start driver assignment for order ${savedOrder._id}:`, error);
       }
 
       // Notify restaurant about new order

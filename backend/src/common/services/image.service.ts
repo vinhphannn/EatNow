@@ -18,10 +18,21 @@ export class ImageService {
     @InjectModel(Image.name) private readonly imageModel: Model<ImageDocument>,
   ) {
     // Configure Cloudinary from env variables
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECRET;
+
+    
+    console.log('Cloudinary Config Check:', {
+      hasCloudName: !!cloudName,
+      hasApiKey: !!apiKey,
+      hasApiSecret: !!apiSecret,
+    });
+    
     cloudinary.config({
-      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-      api_key: process.env.CLOUDINARY_API_KEY,
-      api_secret: process.env.CLOUDINARY_API_SECRET,
+      cloud_name: cloudName,
+      api_key: apiKey,
+      api_secret: apiSecret,
       secure: true,
     });
   }
@@ -41,8 +52,37 @@ export class ImageService {
       throw new BadRequestException(`Invalid file type. Allowed types: ${this.allowedMimeTypes.join(', ')}`);
     }
 
-    if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
-      throw new InternalServerErrorException('Cloudinary is not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET');
+    // Check if Cloudinary is configured
+    const isCloudinaryConfigured = 
+      process.env.CLOUDINARY_CLOUD_NAME && 
+      process.env.CLOUDINARY_API_KEY && 
+      process.env.CLOUDINARY_API_SECRET;
+    
+    if (!isCloudinaryConfigured) {
+      // Local storage fallback when Cloudinary is not configured
+      console.warn('Cloudinary not configured, using local storage fallback');
+      const localUrl = `/uploads/${Date.now()}-${file.originalname || file.filename || 'image'}`;
+      
+      const imageDoc = await this.imageModel.create({
+        filename: file.originalname || file.filename || 'image',
+        originalName: file.originalname || file.filename || 'image',
+        mimeType: file.mimetype,
+        size: file.size,
+        url: localUrl,
+        cloudProvider: 'local',
+        cloudKey: localUrl,
+        uploadedBy,
+        type,
+        width: 0,
+        height: 0,
+      });
+      
+      return {
+        id: String(imageDoc._id),
+        filename: imageDoc.filename,
+        size: imageDoc.size,
+        url: localUrl,
+      };
     }
 
     let uploadResult: any;

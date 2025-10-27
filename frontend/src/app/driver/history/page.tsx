@@ -45,8 +45,8 @@ export default function DriverHistoryPage() {
             const response = await driverService.getDriverHistory(page, 20);
             console.log('Driver history response:', response);
 
-            if (response && response.success && response.data) {
-                const mappedOrders = response.data.orders.map((o: any) => ({
+            if (response && response.orders) {
+                const mappedOrders = response.orders.map((o: any) => ({
                     id: o._id || o.id,
                     code: o.orderNumber || o.code || o.id,
                     status: o.status || "delivered",
@@ -95,10 +95,10 @@ export default function DriverHistoryPage() {
                 }));
 
                 setOrders(mappedOrders);
-                setPagination(response.data.pagination);
+                setPagination(response.pagination);
                 console.log('All driver history orders:', mappedOrders.length);
             } else {
-                throw new Error(response.message || 'Invalid response format');
+                throw new Error('Invalid response format');
             }
         } catch (err: any) {
             console.error('Error loading driver history:', err);

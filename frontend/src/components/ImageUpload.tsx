@@ -65,11 +65,31 @@ export default function ImageUpload({ value, onChange, placeholder = "Chọn hì
         const data = await response.json();
         onChange(data.secure_url);
       } else {
-        // Fallback: upload via backend (apiClient already prefixes /api/v1)
-        const res = await apiClient.upload<{ id: string; url: string }>(`/images/upload`, file);
-        const url = (res as any)?.url;
-        if (!url) throw new Error('Upload failed');
-        onChange(url);
+        // Fallback: upload via backend endpoint
+        try {
+          const api = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+          const formData = new FormData();
+          formData.append('file', file);
+
+          const response = await fetch(`${api}/api/v1/images/upload`, {
+            method: 'POST',
+            body: formData,
+            credentials: 'include',
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.message || 'Upload failed');
+          }
+
+          const data = await response.json();
+          const url = data.url || data.secure_url;
+          if (!url) throw new Error('Upload failed: no URL returned');
+          onChange(url);
+        } catch (error) {
+          console.error('Backend upload error:', error);
+          throw error;
+        }
       }
     } catch (error) {
       console.error('Upload error:', error);

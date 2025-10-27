@@ -584,8 +584,8 @@ class RestaurantService {
 
   // Real-time Updates
   async subscribeToUpdates(): Promise<WebSocket> {
-    const token = localStorage.getItem('eatnow_token');
-    const wsUrl = `${process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3000'}/restaurants/updates?token=${token}`;
+    // Cookie-based auth: WebSocket will include cookies automatically
+    const wsUrl = `${process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3000'}/restaurants/updates`;
     return new WebSocket(wsUrl);
   }
 

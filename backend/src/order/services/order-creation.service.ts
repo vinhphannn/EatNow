@@ -11,8 +11,9 @@ import { Item, ItemDocument } from '../../restaurant/schemas/item.schema';
 import { Restaurant, RestaurantDocument } from '../../restaurant/schemas/restaurant.schema';
 import { CustomerService } from '../../customer/customer.service';
 import { OrderValidator } from '../utils/order.validation';
-import { OrderCalculator, OrderTotals } from '../utils/order.calculations';
 import { ORDER_CONSTANTS } from '../constants/order.constants';
+import { PricingService, OrderPricingInput } from './pricing.service';
+import { DistanceService } from '../../common/services/distance.service';
 
 
 export interface CreateOrderFromCartData {
@@ -24,7 +25,6 @@ export interface CreateOrderFromCartData {
   tip?: number;
   doorFee?: number;
   deliveryFee?: number;
-  voucherCode?: string;
   specialInstructions?: string;
 }
 
@@ -36,6 +36,8 @@ export class OrderCreationService {
     @InjectModel(Item.name) private readonly itemModel: Model<ItemDocument>,
     @InjectModel(Restaurant.name) private readonly restaurantModel: Model<RestaurantDocument>,
     private readonly customerService: CustomerService,
+    private readonly pricingService: PricingService,
+    private readonly distanceService: DistanceService,
   ) {}
 
 
@@ -47,133 +49,194 @@ export class OrderCreationService {
     restaurantId: string,
     orderData: CreateOrderFromCartData
   ): Promise<OrderDocument> {
-    // Get cart
-    const cart = await this.cartModel.findOne({
-      userId: customerId,
-      restaurantId: restaurantId
-    }).lean();
+    try {
+      // Get cart
+      const cart = await this.cartModel.findOne({
+        userId: customerId,
+        restaurantId: restaurantId
+      }).lean();
 
-    const cartValidation = OrderValidator.validateCart(cart);
-    if (!cartValidation.isValid) {
-      throw new Error(cartValidation.errorMessage);
-    }
+      console.log('🔍 Cart found:', cart ? 'Yes' : 'No');
 
-    // Get customer
-    const customer = await this.customerService.getCustomerByUserId(customerId);
-    if (!customer) {
-      throw new NotFoundException('Customer not found');
-    }
+      const cartValidation = OrderValidator.validateCart(cart);
+      if (!cartValidation.isValid) {
+        console.error('❌ Cart validation failed:', cartValidation.errorMessage);
+        throw new Error(cartValidation.errorMessage);
+      }
 
-    // Get restaurant info for coordinates
-    const restaurant = await this.restaurantModel.findById(restaurantId);
-    if (!restaurant) {
-      throw new NotFoundException(ORDER_CONSTANTS.VALIDATION_MESSAGES.RESTAURANT_NOT_FOUND);
-    }
+      // Get customer
+      const customer = await this.customerService.getCustomerByUserId(customerId);
+      if (!customer) {
+        throw new NotFoundException('Customer not found');
+      }
 
-    // Calculate totals
-    const subtotal = cart.totalAmount || 0;
-    console.log('🔍 Cart data:', { cart: cart, subtotal, totalAmount: cart.totalAmount });
-    console.log('🔍 Order data from frontend:', orderData);
-    
-    // Use deliveryFee and driverTip from frontend instead of calculating
-    const deliveryFee = orderData.deliveryFee || OrderCalculator.calculateDeliveryFee(orderData.deliveryAddress);
-    const driverTip = orderData.tip || 0; // orderData.tip chứa driverTip từ frontend
-    const doorFee = orderData.doorFee || 0;
-    
-    console.log('🔍 DriverTip values:', { 
-      orderDataDriverTip: orderData.tip, 
-      finalDriverTip: driverTip,
-      orderData: orderData 
-    });
-    const discount = 0; // TODO: Calculate from voucher
-    const totals = OrderCalculator.calculateOrderTotals(subtotal, deliveryFee, driverTip, doorFee, discount);
-    
-    console.log('🔍 Calculated totals:', totals);
+      // Get restaurant info for coordinates
+      const restaurant = await this.restaurantModel.findById(restaurantId);
+      if (!restaurant) {
+        throw new NotFoundException(ORDER_CONSTANTS.VALIDATION_MESSAGES.RESTAURANT_NOT_FOUND);
+      }
 
-    // Prepare order items from cart
-    const orderItems = cart.items.map(cartItem => {
-      const itemTotals = OrderCalculator.calculateItemTotals(cartItem);
-      return {
+      // Calculate totals using PricingService
+      const subtotal = cart.totalAmount || 0;
+      console.log('🔍 Cart data:', { cart: cart, subtotal, totalAmount: cart.totalAmount });
+      console.log('🔍 Order data from frontend:', orderData);
+      
+      // Tính khoảng cách thực tế từ quán đến địa chỉ giao hàng (sử dụng OSRM routing API như frontend)
+      const distanceKm = await this.distanceService.calculateRouteDistanceKm(
+        { lat: restaurant.latitude, lng: restaurant.longitude },
+        { lat: orderData.deliveryAddress.latitude, lng: orderData.deliveryAddress.longitude }
+      );
+      
+      // Tính phí giao hàng từ khoảng cách (backend tính để xác minh)
+      const calculatedDeliveryFee = this.pricingService.calculateDeliveryFee(distanceKm);
+      
+      // Xác minh deliveryFee từ frontend (nếu có)
+      let deliveryFee = calculatedDeliveryFee;
+      if (orderData.deliveryFee !== undefined && orderData.deliveryFee !== null) {
+        const frontendFee = orderData.deliveryFee;
+        const tolerance = 1000; // Cho phép sai số 1000đ (do làm tròn)
+        
+        if (Math.abs(frontendFee - calculatedDeliveryFee) <= tolerance) {
+          deliveryFee = frontendFee; // Sử dụng phí từ frontend để đồng nhất
+          console.log(`✅ Delivery fee verified: Frontend=${frontendFee}, Backend=${calculatedDeliveryFee}`);
+        } else {
+          console.warn(`⚠️ Delivery fee mismatch: Frontend=${frontendFee}, Backend=${calculatedDeliveryFee}`);
+          console.warn(`Using backend calculated fee for security: ${calculatedDeliveryFee}`);
+        }
+      }
+      
+      // Tính toán pricing với PricingService
+      const pricingInput: OrderPricingInput = {
+        subtotal,
+        deliveryFee,
+        tip: orderData.tip || 0,
+        doorFee: Boolean(orderData.doorFee),
+      };
+      
+      const pricing = this.pricingService.calculateOrderPricing(pricingInput);
+      
+      console.log('🔍 Calculated pricing:', pricing);
+
+      // Prepare order items from cart
+      const orderItems = cart.items.map(cartItem => ({
         itemId: cartItem.itemId,
         name: cartItem.name,
         price: cartItem.price,
         imageUrl: cartItem.imageUrl,
         quantity: cartItem.quantity,
         options: cartItem.options || [],
-        subtotal: itemTotals.subtotal,
-        totalPrice: itemTotals.totalPrice,
+        subtotal: cartItem.subtotal,
+        totalPrice: cartItem.totalPrice,
         specialInstructions: ''
-      };
-    });
+      }));
 
-    // Format delivery address
-    const formattedDeliveryAddress = this.formatDeliveryAddress(orderData.deliveryAddress);
-    console.log('🔍 Formatted delivery address:', formattedDeliveryAddress);
+      // Format delivery address
+      const formattedDeliveryAddress = this.formatDeliveryAddress(orderData.deliveryAddress);
+      console.log('🔍 Formatted delivery address:', formattedDeliveryAddress);
 
-    // Calculate distances and estimated delivery time
-    const { distanceToRestaurant, estimatedDeliveryTime } = await this.calculateDeliveryInfo(
-      restaurant,
-      formattedDeliveryAddress
-    );
+      // Calculate distances and estimated delivery time
+      const { distanceToRestaurant, estimatedDeliveryTime } = await this.calculateDeliveryInfo(
+        restaurant,
+        formattedDeliveryAddress
+      );
 
-    // Generate order code
-    const orderCode = await this.generateOrderCode();
+      // Generate order code
+      const orderCode = await this.generateOrderCode();
 
-    // Create order
-    const order = new this.orderModel({
-      customerId: new Types.ObjectId(customerId), // Store as ObjectId for indexing
-      restaurantId: new Types.ObjectId(restaurantId),
-      items: orderItems,
-      total: totals.subtotal, // Tổng tiền món ăn (chưa tính phí)
-      subtotal: totals.subtotal,
-      deliveryFee: totals.deliveryFee,
-      tip: totals.tip, // driverTip từ frontend (đã được tính trong totals)
-      doorFee: totals.doorFee,
-      discount: totals.discount || 0,
-      finalTotal: totals.finalTotal,
-      deliveryAddress: {
-        ...formattedDeliveryAddress,
-        recipientName: formattedDeliveryAddress.recipientName || orderData.recipient.name,
-        recipientPhone: formattedDeliveryAddress.recipientPhone || orderData.recipient.phone,
-      },
-      specialInstructions: orderData.specialInstructions || '',
-      // Purchaser info (customer who placed the order)
-      purchaserPhone: (customer as any)?.phone || '',
-      paymentMethod: orderData.paymentMethod,
-      status: OrderStatus.PENDING,
-      deliveryMode: orderData.deliveryMode || 'immediate',
-      scheduledAt: orderData.scheduledAt || null,
-      voucherCode: orderData.voucherCode || '',
-      code: orderCode, // Add order code
-      deliveryDistance: distanceToRestaurant / 1000, // Only one distance field
-      estimatedDeliveryTime,
-      // Restaurant coordinates for driver reference
-      restaurantCoordinates: {
-        latitude: restaurant.latitude,
-        longitude: restaurant.longitude
-      },
-      trackingHistory: [{
+      // Create order with new pricing fields
+      const order = new this.orderModel({
+        customerId: new Types.ObjectId(customerId),
+        restaurantId: new Types.ObjectId(restaurantId),
+        items: orderItems,
+        
+        // Các trường cơ bản
+        subtotal: pricing.subtotal,
+        deliveryFee: pricing.deliveryFee,
+        tip: pricing.tip,
+        doorFee: pricing.doorFee,
+        finalTotal: pricing.finalTotal,
+        
+        // Các trường mới - tiền thu và chi trả
+        customerPayment: pricing.customerPayment,
+        restaurantRevenue: pricing.restaurantRevenue,
+        driverPayment: pricing.driverPayment,
+        
+        // Phí platform
+        platformFeeRate: pricing.platformFeeRate,
+        platformFeeAmount: pricing.platformFeeAmount,
+        
+        // Chiết khấu tài xế
+        driverCommissionRate: pricing.driverCommissionRate,
+        driverCommissionAmount: pricing.driverCommissionAmount,
+        
+        deliveryAddress: {
+          ...formattedDeliveryAddress,
+          recipientName: formattedDeliveryAddress.recipientName || orderData.recipient.name,
+          recipientPhone: formattedDeliveryAddress.recipientPhone || orderData.recipient.phone,
+        },
+        specialInstructions: orderData.specialInstructions || '',
+        purchaserPhone: (customer as any)?.phone || '',
+        paymentMethod: orderData.paymentMethod,
         status: OrderStatus.PENDING,
-        timestamp: new Date(),
-        note: ORDER_CONSTANTS.STATUS_NOTES.pending,
-        updatedBy: 'customer'
-      }]
-    });
+        deliveryMode: orderData.deliveryMode || 'immediate',
+        scheduledAt: orderData.scheduledAt || null,
+        voucherCode: '',
+        code: orderCode,
+        deliveryDistance: distanceToRestaurant / 1000,
+        estimatedDeliveryTime,
+        restaurantCoordinates: {
+          latitude: restaurant.latitude,
+          longitude: restaurant.longitude
+        },
+        trackingHistory: [{
+          status: OrderStatus.PENDING,
+          timestamp: new Date(),
+          note: ORDER_CONSTANTS.STATUS_NOTES.pending,
+          updatedBy: 'customer'
+        }]
+      });
 
-    console.log('🔍 Order document before save:', {
-      total: order.total,
-      subtotal: order.subtotal,
-      deliveryFee: order.deliveryFee,
-      driverTip: order.tip, // Lưu driverTip vào field tip
-      recipientName: order.deliveryAddress?.recipientName,
-      recipientPhone: order.deliveryAddress?.recipientPhone
-    });
-    const savedOrder = await order.save();
+      console.log('🔍 Order document before save:', {
+        subtotal: order.subtotal,
+        deliveryFee: order.deliveryFee,
+        driverTip: order.tip,
+        customerPayment: order.customerPayment,
+        restaurantRevenue: order.restaurantRevenue,
+        driverPayment: order.driverPayment,
+        recipientName: order.deliveryAddress?.recipientName,
+        recipientPhone: order.deliveryAddress?.recipientPhone
+      });
+      
+      const savedOrder = await order.save();
 
-    // Clear cart
-    await this.cartModel.deleteOne({ _id: cart._id });
+      // Clear cart - use deleteOne with proper filter
+      try {
+        const result = await this.cartModel.deleteOne({ 
+          _id: cart._id,
+          userId: customerId,
+          restaurantId: restaurantId
+        });
+        console.log('🔍 Cart deletion result:', result);
+      } catch (error) {
+        console.error('⚠️ Failed to clear cart:', error);
+        // Don't throw error, order already created
+      }
 
-    return savedOrder;
+      return savedOrder;
+    } catch (error) {
+      console.error('❌ Error in createOrderFromCart:', error);
+      
+      // Provide more detailed error information
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      
+      if (error instanceof Error) {
+        throw new Error(`Failed to create order: ${error.message}`);
+      }
+      
+      throw new Error('Unknown error occurred while creating order');
+    }
   }
 
   /**
@@ -186,7 +249,6 @@ export class OrderCreationService {
 
     return items.map(item => {
       const dbItem = itemMap.get(item.itemId);
-      const itemTotals = OrderCalculator.calculateItemTotals(item);
       
       return {
         itemId: new Types.ObjectId(item.itemId),
@@ -194,8 +256,8 @@ export class OrderCreationService {
         price: item.price,
         imageUrl: dbItem?.imageUrl || item.imageUrl,
         quantity: item.quantity,
-        subtotal: itemTotals.subtotal,
-        totalPrice: itemTotals.totalPrice,
+        subtotal: item.subtotal || (item.price * item.quantity),
+        totalPrice: item.totalPrice || (item.price * item.quantity),
         options: item.options || [],
         specialInstructions: item.specialInstructions || ''
       };
@@ -248,12 +310,36 @@ export class OrderCreationService {
    * Calculate delivery information
    */
   private async calculateDeliveryInfo(restaurant: any, deliveryAddress: any) {
-    // Mock distance calculation (should be replaced with real distance service)
-    const distanceToRestaurant = 1000; // meters
-    const estimatedDeliveryTime = OrderCalculator.calculateEstimatedDeliveryTime(distanceToRestaurant / 1000);
+    // Validate coordinates
+    if (!restaurant?.latitude || !restaurant?.longitude) {
+      console.warn('⚠️ Restaurant missing coordinates, using default 5km');
+      const defaultDistanceKm = 5;
+      return { 
+        distanceToRestaurant: defaultDistanceKm * 1000, 
+        estimatedDeliveryTime: this.pricingService.calculateEstimatedDeliveryTime(defaultDistanceKm)
+      };
+    }
+
+    if (!deliveryAddress?.latitude || !deliveryAddress?.longitude) {
+      console.warn('⚠️ Delivery address missing coordinates, using default 5km');
+      const defaultDistanceKm = 5;
+      return { 
+        distanceToRestaurant: defaultDistanceKm * 1000, 
+        estimatedDeliveryTime: this.pricingService.calculateEstimatedDeliveryTime(defaultDistanceKm)
+      };
+    }
+
+    // Use OSRM routing API to get actual road distance
+    const distanceKm = await this.distanceService.calculateRouteDistanceKm(
+      { lat: restaurant.latitude, lng: restaurant.longitude },
+      { lat: deliveryAddress.latitude, lng: deliveryAddress.longitude }
+    );
+    const distanceToRestaurant = distanceKm * 1000; // Convert to meters
+    const estimatedDeliveryTime = this.pricingService.calculateEstimatedDeliveryTime(distanceKm);
 
     return { distanceToRestaurant, estimatedDeliveryTime };
   }
+
 
   /**
    * Generate order code

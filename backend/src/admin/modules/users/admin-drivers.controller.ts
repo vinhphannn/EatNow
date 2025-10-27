@@ -67,6 +67,11 @@ export class AdminDriversController {
     const docs = await this.logModel.find({ driverId: id as any }).sort({ createdAt: -1 }).limit(10).lean();
     return docs.map((d: any) => ({ id: String(d._id), action: d.action, reason: d.reason, createdAt: d.createdAt }));
   }
+
+  @Get('stats/overview')
+  async getOverviewStats() {
+    return this.service.getOverviewStats();
+  }
 }
 
 

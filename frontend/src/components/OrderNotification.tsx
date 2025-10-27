@@ -15,8 +15,9 @@ export default function OrderNotification() {
   const [customerId, setCustomerId] = useState<string | null>(null);
   
   useEffect(() => {
-    const id = localStorage.getItem('eatnow_user_id');
-    setCustomerId(id);
+    // Cookie-based auth: get customer ID from AuthContext instead of localStorage
+    // This should be passed as prop or use AuthContext
+    setCustomerId(null); // Will be updated when AuthContext is available
   }, []);
   
   const { socket, connected } = useCustomerNotifications(customerId || '');

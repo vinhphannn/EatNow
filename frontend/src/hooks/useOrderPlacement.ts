@@ -89,7 +89,8 @@ export const useOrderPlacement = (props: UseOrderPlacementProps) => {
         recipientNameFromProps: props.recipientName,
         recipientPhoneFromProps: props.recipientPhone,
         driverTip: orderData.tip,
-        totals: orderData.totals,
+        doorFee: orderData.doorFee,
+        voucherCode: orderData.voucherCode,
         orderData: orderData
       });
 

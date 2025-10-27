@@ -15,21 +15,20 @@ export class JwtAuthGuard implements CanActivate {
     if (auth && auth.startsWith('Bearer ')) {
       token = auth.substring(7);
     } else {
-      // Fallback to HttpOnly cookies - check role-specific cookies first
+      // Fallback to HttpOnly cookies - check role-specific cookies only
       const cookies = req.cookies || {};
       
-      // Check role-specific cookies
-      for (const role of ['customer', 'restaurant', 'driver', 'admin']) {
+      // Priority order: admin > driver > restaurant > customer
+      // This ensures the most privileged role is used when multiple cookies exist
+      const roles = ['admin', 'driver', 'restaurant', 'customer'];
+      
+      for (const role of roles) {
         const cookieName = `${role}_access_token`;
         if (cookies[cookieName]) {
           token = cookies[cookieName];
+          console.log(`🔒 JwtAuthGuard: Using ${role}_access_token`);
           break;
         }
-      }
-      
-      // Fallback to generic access_token
-      if (!token) {
-        token = cookies['access_token'];
       }
     }
 

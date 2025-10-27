@@ -26,10 +26,9 @@ export default function RestaurantDashboardPage() {
     setError(null);
     
     try {
-      // Load user data
-      const userData = typeof localStorage !== 'undefined' ? localStorage.getItem('eatnow_user_data') : null;
-      if (userData) {
-        setUser(JSON.parse(userData));
+      // Use AuthContext instead of localStorage
+      if (user) {
+        setUser(user);
       }
 
       // Load restaurant data
@@ -369,9 +368,9 @@ export default function RestaurantDashboardPage() {
                           </span>
                         </div>
                         <div>
-                          <p className="font-medium text-gray-900">{order.customer?.name || order.recipientName || 'Khách hàng'}</p>
+                          <p className="font-medium text-gray-900">{order.customer?.name || 'Khách hàng'}</p>
                           <p className="text-sm text-gray-500">
-                            {order.items?.slice(0, 2).map(item => item.name || item.foodName || 'Món ăn').join(', ')}
+                            {order.items?.slice(0, 2).map(item => item.name || 'Món ăn').join(', ')}
                             {order.items?.length > 2 && ` +${order.items.length - 2} món khác`}
                           </p>
                           <p className="text-xs text-gray-400">

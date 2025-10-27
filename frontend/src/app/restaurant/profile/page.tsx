@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import ImageUpload from '@/components/ImageUpload';
 
 export default function RestaurantProfilePage() {
 	const router = useRouter();
@@ -14,11 +15,62 @@ export default function RestaurantProfilePage() {
 	const [openDays, setOpenDays] = useState<number[]>([]);
 	const [latitude, setLatitude] = useState<number>();
 	const [longitude, setLongitude] = useState<number>();
-	const [mapOpen, setMapOpen] = useState(false);
+	const [imageUrl, setImageUrl] = useState('');
 
 	useEffect(() => {
 		loadProfile();
 	}, []);
+
+	// Render mini map when location is set
+	useEffect(() => {
+		if (latitude && longitude) {
+			let mapInstance: any = null;
+			
+			const initMap = () => {
+				if ((window as any).L) {
+					const L = (window as any).L;
+					const container = document.getElementById('mini-map-preview');
+					if (container && !container.hasAttribute('data-leaflet-initialized')) {
+						container.setAttribute('data-leaflet-initialized', 'true');
+						mapInstance = L.map(container).setView([latitude, longitude], 15);
+						L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapInstance);
+						L.marker([latitude, longitude]).addTo(mapInstance);
+					}
+				} else {
+					const script = document.createElement('script');
+					script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+					script.onload = () => {
+						const L = (window as any).L;
+						const container = document.getElementById('mini-map-preview');
+						if (container && !container.hasAttribute('data-leaflet-initialized')) {
+							container.setAttribute('data-leaflet-initialized', 'true');
+							mapInstance = L.map(container).setView([latitude, longitude], 15);
+							L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapInstance);
+							L.marker([latitude, longitude]).addTo(mapInstance);
+						}
+					};
+					document.head.appendChild(script);
+					
+					const link = document.createElement('link');
+					link.rel = 'stylesheet';
+					link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+					document.head.appendChild(link);
+				}
+			};
+			
+			initMap();
+			
+			return () => {
+				if (mapInstance) {
+					try {
+						mapInstance.remove();
+					} catch (e) {
+						// Ignore cleanup errors
+					}
+				}
+			};
+		}
+	}, [latitude, longitude]);
 
 	const loadProfile = async () => {
 		try {
@@ -44,6 +96,7 @@ export default function RestaurantProfilePage() {
 						setOpenDays(restaurant.openDays || []);
 						setLatitude(restaurant.latitude);
 						setLongitude(restaurant.longitude);
+						setImageUrl(restaurant.imageUrl || '');
 					} catch (jsonError) {
 						console.error('JSON parsing error in loadProfile:', jsonError);
 						// Set default values if JSON parsing fails
@@ -93,7 +146,8 @@ export default function RestaurantProfilePage() {
 					closeTime,
 					openDays,
 					latitude,
-					longitude
+					longitude,
+					imageUrl
 				})
 			});
 
@@ -122,10 +176,7 @@ export default function RestaurantProfilePage() {
 		try {
 			await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/v1/auth/logout`, { method: 'POST', credentials: 'include' });
 		} catch {}
-		if (typeof localStorage !== 'undefined') {
-			localStorage.removeItem('eatnow_restaurant_id');
-			localStorage.removeItem('eatnow_user');
-		}
+		// Cookie-based auth: cookies are automatically cleared by backend
 		router.push('/restaurant/login');
 	}
 
@@ -137,6 +188,22 @@ export default function RestaurantProfilePage() {
 			</div>
 
 			<form onSubmit={onSave} className="mt-6 space-y-4 rounded-xl border bg-white p-6">
+				{/* Avatar Upload Section */}
+				<div className="pb-6 border-b">
+					<label className="block text-sm font-medium text-gray-700 mb-2">
+						Ảnh đại diện nhà hàng
+					</label>
+					<ImageUpload
+						value={imageUrl}
+						onChange={setImageUrl}
+						placeholder="Chọn ảnh đại diện nhà hàng..."
+						className="w-full h-64 rounded-lg"
+					/>
+					<p className="text-xs text-gray-500 mt-2 text-center">
+						Kéo thả, click chọn, hoặc Ctrl+V để dán ảnh • JPG, PNG (tối đa 2MB)
+					</p>
+				</div>
+
 				<div>
 					<label className="block text-sm text-gray-600">Tên nhà hàng</label>
 					<input className="mt-1 w-full rounded-md border px-3 py-2" value={name} onChange={(e)=>setName(e.target.value)} required />
@@ -167,28 +234,77 @@ export default function RestaurantProfilePage() {
 						))}
 					</div>
 				</div>
-				<div className="flex items-center gap-3">
-					<button type="button" className="rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50" onClick={() => setMapOpen(true)}>Chọn vị trí trên bản đồ</button>
-					{latitude && longitude && (
-						<span className="text-sm text-gray-600">Đã chọn: {latitude.toFixed(4)}, {longitude.toFixed(4)}</span>
-					)}
+				{/* Location Section */}
+				<div>
+					<label className="block text-sm text-gray-600 mb-2">Vị trí nhà hàng</label>
+					<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+						{/* Map Preview */}
+						<div className="relative h-48 border rounded-lg overflow-hidden">
+							{latitude && longitude ? (
+								<div id="mini-map-preview" className="w-full h-full"></div>
+							) : (
+								<div className="flex items-center justify-center h-full bg-gray-100">
+									<p className="text-gray-400 text-sm">Chưa chọn vị trí</p>
+								</div>
+							)}
+						</div>
+						
+						{/* Location Info */}
+						<div className="space-y-3">
+							{latitude && longitude && (
+								<div className="p-3 bg-orange-50 rounded-lg">
+									<p className="text-xs text-gray-600 mb-1">Tọa độ đã chọn</p>
+									<p className="text-sm font-mono text-gray-800">
+										{latitude.toFixed(6)}, {longitude.toFixed(6)}
+									</p>
+								</div>
+							)}
+							<LocationPicker
+								latitude={latitude}
+								longitude={longitude}
+								onPick={(lat, lng) => {
+									setLatitude(lat);
+									setLongitude(lng);
+								}}
+							/>
+						</div>
+					</div>
 				</div>
 				<button className="rounded-lg bg-orange-600 px-4 py-2 font-semibold text-white hover:bg-orange-700 disabled:opacity-60" disabled={loading}>{loading ? 'Đang lưu...' : 'Lưu thay đổi'}</button>
 			</form>
-
-			{mapOpen && (
-				<MapPickerModal
-					latitude={latitude}
-					longitude={longitude}
-					address={address}
-					onClose={()=> setMapOpen(false)}
-					onPick={(lat, lng) => { setLatitude(lat); setLongitude(lng); setMapOpen(false); }}
-				/>
-			)}
 		</div>
 	);
 }
 
+function LocationPicker({ latitude, longitude, onPick }: { latitude?: number; longitude?: number; onPick: (lat: number, lng: number) => void }) {
+	const [mapOpen, setMapOpen] = useState(false);
+
+	return (
+		<>
+			<button 
+				type="button" 
+				className="w-full rounded-md border px-3 py-2 text-sm hover:bg-gray-50 flex items-center justify-center gap-2"
+				onClick={() => setMapOpen(true)}
+			>
+				<span>🗺️</span>
+				{latitude && longitude ? 'Thay đổi vị trí' : 'Chọn vị trí trên bản đồ'}
+			</button>
+			
+			{mapOpen && (
+				<MapPickerModal
+					latitude={latitude}
+					longitude={longitude}
+					address=""
+					onClose={() => setMapOpen(false)}
+					onPick={(lat, lng) => { 
+						onPick(lat, lng);
+						setMapOpen(false);
+					}}
+				/>
+			)}
+		</>
+	);
+}
 
 function MapPickerModal({ latitude, longitude, address, onClose, onPick }: { latitude?: number; longitude?: number; address?: string; onClose: ()=>void; onPick: (lat: number, lng: number)=>void }) {
 	const [loaded, setLoaded] = useState(false);

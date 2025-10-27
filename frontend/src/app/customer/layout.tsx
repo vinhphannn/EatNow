@@ -42,9 +42,15 @@ export default function CustomerLayout({ children }: { children: ReactNode }) {
     return (
         <DeliveryAddressProvider>
         <div className="min-h-screen bg-gray-50">
-            {pathname !== '/customer/profile' && pathname !== '/customer/orders' && pathname !== '/customer/search' && !pathname.startsWith('/customer/checkout') && <CustomerNavBar />}
+            {/* Hide navbar for login and register pages */}
+            {pathname !== '/customer/login' && pathname !== '/customer/register' && 
+             pathname !== '/customer/profile' && pathname !== '/customer/orders' && 
+             pathname !== '/customer/search' && !pathname.startsWith('/customer/checkout') && 
+             <CustomerNavBar />}
             {children}
-            {!pathname.startsWith('/customer/restaurants/') && <BottomNavBar />}
+            {/* Hide bottom navbar for login and register pages */}
+            {pathname !== '/customer/login' && pathname !== '/customer/register' && 
+             !pathname.startsWith('/customer/restaurants/') && <BottomNavBar />}
         </div>
         </DeliveryAddressProvider>
     );

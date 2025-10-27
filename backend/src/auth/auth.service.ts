@@ -207,26 +207,30 @@ export class AuthService {
     return { access_token: access };
   }
 
-  async getProfileFromCookie(req: Request) {
-    // Try to find token from any role-specific cookie
+  async getProfileFromCookie(req: Request, requiredRole?: string) {
+    // Try to find token from any role-specific cookie only
     const cookies = req.cookies || {};
     let token: string | undefined;
     
-    // Check all possible cookie names
-    for (const role of ['customer', 'restaurant', 'driver', 'admin']) {
+    console.log('🔍 Available cookies:', Object.keys(cookies));
+    
+    // Priority order: admin > driver > restaurant > customer
+    // This ensures the most privileged role is returned when multiple cookies exist
+    const roles = ['admin', 'driver', 'restaurant', 'customer'];
+    
+    for (const role of roles) {
       const cookieNames = this.getCookieNames(role);
       if (cookies[cookieNames.accessToken]) {
         token = cookies[cookieNames.accessToken];
+        console.log(`✅ Using ${role}_access_token`);
         break;
       }
     }
     
-    // Fallback to generic access_token
     if (!token) {
-      token = cookies['access_token'];
+      console.log('❌ No access token found in cookies:', Object.keys(cookies));
+      throw new UnauthorizedException('Missing token');
     }
-    
-    if (!token) throw new UnauthorizedException('Missing token');
     try {
       const payload = await this.jwt.verifyAsync(token);
       const user = await this.users.findByIdLean(payload.sub);

@@ -26,21 +26,16 @@ export default function AdminLoginPage() {
     e.preventDefault();
     clearError();
 
-    // Prevent login if already authenticated
-    if (isAuthenticated && user?.role === UserRole.ADMIN) {
-      console.log("🔍 AdminLogin: Already authenticated, skipping login");
-      return;
-    }
-
     try {
       console.log("🔍 AdminLogin: Starting login process...");
       await login({ email, password });
       console.log("🔍 AdminLogin: Login completed successfully");
-      // Fallback redirect in case auth state updates are delayed
-      if (!hasRedirected) {
-        setHasRedirected(true);
-        router.replace('/admin/dashboard');
-      }
+      
+      // Wait a bit for state to update
+      setTimeout(() => {
+        // Force full page reload to ensure cookies are set
+        window.location.href = '/admin/dashboard';
+      }, 100);
     } catch (err) {
       // Error is handled by AuthContext
       console.error('🔍 AdminLogin: Login error:', err);
