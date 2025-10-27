@@ -41,9 +41,10 @@ export class AdminDriversService {
       return { [field]: dir === 'desc' ? -1 : 1 } as any;
     })();
 
+    // Lấy TẤT CẢ thông tin driver từ database
     const [drivers, total] = await Promise.all([
       this.driverModel
-        .find(driverFilter, { userId: 1, status: 1, createdAt: 1, isAuto: 1 })
+        .find(driverFilter)
         .sort(sortSpec)
         .skip((Number(page) - 1) * Number(limit))
         .limit(Number(limit))
@@ -54,7 +55,7 @@ export class AdminDriversService {
     const userIds = Array.from(new Set(drivers.map((d: any) => String(d.userId)).filter(Boolean))).map((id) => new Types.ObjectId(id));
     const users = userIds.length
       ? await this.userModel
-          .find({ _id: { $in: userIds } }, { name: 1, email: 1, phone: 1 })
+          .find({ _id: { $in: userIds } }, { name: 1, email: 1, phone: 1, isActive: 1, lastLoginAt: 1 })
           .lean()
       : [];
     const userMap = new Map(users.map((u: any) => [String(u._id), u]));
@@ -62,13 +63,78 @@ export class AdminDriversService {
     const data = drivers.map((d: any) => {
       const u = d.userId ? userMap.get(String(d.userId)) : null;
       return {
+        // Thông tin cơ bản
         id: String(d._id),
         userId: d.userId ? String(d.userId) : undefined,
         name: u?.name || u?.email || 'N/A',
         phone: u?.phone,
+        email: u?.email,
+        isActive: u?.isActive,
+        lastLoginAt: u?.lastLoginAt,
+        
+        // Trạng thái làm việc
         status: d.status,
-        createdAt: d.createdAt,
+        deliveryStatus: d.deliveryStatus,
+        
+        // Thông tin ban
+        banInfo: d.banInfo ? {
+          reason: d.banInfo.reason,
+          until: d.banInfo.until,
+          bannedBy: d.banInfo.bannedBy,
+          bannedAt: d.banInfo.bannedAt
+        } : null,
+        
+        // Vị trí GPS
+        location: d.location ? {
+          latitude: d.location[1],
+          longitude: d.location[0]
+        } : null,
+        lastLocationAt: d.lastLocationAt,
+        
+        // Đơn hàng hiện tại
+        currentOrderId: d.currentOrderId ? String(d.currentOrderId) : null,
+        currentOrderStartedAt: d.currentOrderStartedAt,
+        
+        // Chỉ số hiệu suất
+        ordersCompleted: d.ordersCompleted || 0,
+        ordersRejected: d.ordersRejected || 0,
+        ordersSkipped: d.ordersSkipped || 0,
+        rating: d.rating || 0,
+        ratingCount: d.ratingCount || 0,
+        onTimeDeliveries: d.onTimeDeliveries || 0,
+        lateDeliveries: d.lateDeliveries || 0,
+        
+        // Thông tin phương tiện
+        vehicleType: d.vehicleType,
+        licensePlate: d.licensePlate,
+        
+        // Thông tin ngân hàng
+        bankAccount: d.bankAccount,
+        bankName: d.bankName,
+        
+        // Thống kê chi tiết
+        totalDeliveries: d.totalDeliveries || 0,
+        averageDeliveryTime: d.averageDeliveryTime || 0,
+        performanceScore: d.performanceScore || 0,
+        
+        // Theo dõi tải công việc
+        activeOrdersCount: d.activeOrdersCount || 0,
+        maxConcurrentOrders: d.maxConcurrentOrders || 1,
+        
+        // Hiệu suất khoảng cách
+        averageDistancePerOrder: d.averageDistancePerOrder || 0,
+        totalDistanceTraveled: d.totalDistanceTraveled || 0,
+        
+        // Chế độ tự động
         isAuto: !!d.isAuto,
+        autoMeta: d.autoMeta,
+        
+        // Ví tiền
+        walletBalance: d.walletBalance || 0,
+        
+        // Timestamps
+        createdAt: d.createdAt,
+        updatedAt: d.updatedAt
       };
     });
 

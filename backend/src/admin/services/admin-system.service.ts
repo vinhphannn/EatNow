@@ -34,8 +34,8 @@ export class AdminSystemService {
       // Lấy tài xế available từ DB
       const availableDriversInDb = await this.driverModel
         .find({ 
-          status: 'available',
-          currentOrderId: { $in: [null, undefined] }
+          status: 'checkin',
+          deliveryStatus: { $in: [null, undefined] }
         })
         .select('_id')
         .lean();

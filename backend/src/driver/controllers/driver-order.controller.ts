@@ -6,6 +6,7 @@ import { OrderStatus } from '../../order/schemas/order.schema';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Driver } from '../schemas/driver.schema';
+import { DriverPresenceService } from '../services/driver-presence.service';
 
 @Controller('driver/orders')
 @UseGuards(JwtAuthGuard)
@@ -16,6 +17,7 @@ export class DriverOrderController {
     private readonly orderAssignmentService: OrderAssignmentService,
     private readonly driverOrderService: DriverOrderService,
     @InjectModel(Driver.name) private driverModel: Model<Driver>,
+    private readonly driverPresenceService: DriverPresenceService,
   ) {}
 
   @Get()
@@ -285,6 +287,52 @@ export class DriverOrderController {
     } catch (error) {
       this.logger.error('Failed to update order status:', error);
       return { success: false, message: 'Failed to update status' };
+    }
+  }
+
+  /**
+   * Driver cập nhật vị trí
+   * POST /api/v1/driver/orders/location
+   */
+  @Post('location')
+  async updateLocation(@Body() locationDto: { latitude: number; longitude: number }, @Request() req) {
+    try {
+      const driverId = req.user.id;
+      const { latitude, longitude } = locationDto;
+
+      // Validate input
+      if (!latitude || !longitude || typeof latitude !== 'number' || typeof longitude !== 'number') {
+        return {
+          success: false,
+          message: 'Invalid location data. Latitude and longitude must be numbers.'
+        };
+      }
+
+      // Validate coordinate ranges
+      if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+        return {
+          success: false,
+          message: 'Invalid coordinate values. Latitude must be between -90 and 90, longitude between -180 and 180.'
+        };
+      }
+
+      // Cập nhật vị trí driver trong Redis và DB
+      await this.driverPresenceService.updateDriverLocation(driverId, { latitude, longitude });
+
+      this.logger.log(`Driver ${driverId} location updated: ${latitude}, ${longitude}`);
+
+      return {
+        success: true,
+        message: 'Location updated successfully',
+        data: { latitude, longitude }
+      };
+
+    } catch (error) {
+      this.logger.error('Failed to update driver location:', error);
+      return {
+        success: false,
+        message: 'Failed to update location'
+      };
     }
   }
 }

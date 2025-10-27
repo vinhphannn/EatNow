@@ -107,10 +107,11 @@ export class SmartAssignmentService {
     radiusKm: number
   ): Promise<DriverDocument[]> {
     try {
-      // Tìm drivers có status = available và có location
+      // Tìm drivers có status = checkin, không đang giao hàng và có location
       const drivers = await this.driverModel
         .find({
-          status: 'available',
+          status: 'checkin',
+          deliveryStatus: { $in: [null, undefined] },
           location: { $exists: true, $ne: [0, 0] },
           // Đơn đang giao < max concurrent orders
           $expr: {
@@ -289,7 +290,7 @@ export class SmartAssignmentService {
 
       // Cập nhật driver
       await this.driverModel.findByIdAndUpdate(driverId, {
-        status: 'delivering',
+        deliveryStatus: 'delivering',
         currentOrderId: new Types.ObjectId(orderId),
         currentOrderStartedAt: new Date(),
         $inc: { activeOrdersCount: 1 }

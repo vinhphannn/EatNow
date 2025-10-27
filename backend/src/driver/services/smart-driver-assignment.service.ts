@@ -33,10 +33,24 @@ export class SmartDriverAssignmentService {
     try {
       this.logger.log(`🔍 Finding best driver for order: ${orderId}`);
 
+      // Validate input
+      if (!orderId || typeof orderId !== 'string') {
+        this.logger.error('Invalid orderId provided');
+        return null;
+      }
+
       // Lấy thông tin đơn hàng
       const order = await this.orderModel.findById(orderId).lean();
       if (!order) {
         this.logger.error(`Order not found: ${orderId}`);
+        await this.redisService.removePendingOrder(orderId); // Cleanup
+        return null;
+      }
+
+      // Kiểm tra đơn hàng có hợp lệ không
+      if (!order.restaurantCoordinates?.latitude || !order.restaurantCoordinates?.longitude) {
+        this.logger.error(`Order ${orderId} missing restaurant coordinates`);
+        await this.redisService.removePendingOrder(orderId); // Cleanup
         return null;
       }
 
@@ -45,6 +59,13 @@ export class SmartDriverAssignmentService {
         this.logger.log(`Order ${orderId} already has driver: ${order.driverId}`);
         // Xóa khỏi pending orders
         await this.redisService.removePendingOrder(orderId);
+        return null;
+      }
+
+      // Kiểm tra đơn hàng có đang trong trạng thái hợp lệ không
+      if (['delivered', 'cancelled'].includes(order.status)) {
+        this.logger.warn(`Order ${orderId} is in final state: ${order.status}`);
+        await this.redisService.removePendingOrder(orderId); // Cleanup
         return null;
       }
 
@@ -89,34 +110,69 @@ export class SmartDriverAssignmentService {
    */
   private async evaluateDriver(driverId: string, order: any): Promise<DriverCandidate | null> {
     try {
+      // Validate input
+      if (!driverId || !order) {
+        this.logger.warn('Invalid driverId or order in evaluateDriver');
+        return null;
+      }
+
       // Lấy thông tin tài xế
       const driver = await this.driverModel.findById(driverId).lean();
-      if (!driver) return null;
+      if (!driver) {
+        this.logger.warn(`Driver not found: ${driverId}`);
+        return null;
+      }
 
       // Kiểm tra tài xế có available không
-      if (driver.status !== 'available') return null;
+      if (driver.status !== 'checkin') {
+        this.logger.debug(`Driver ${driverId} not checked in: ${driver.status}`);
+        return null;
+      }
+      
+      // Kiểm tra tài xế có đang giao hàng không
+      if (driver.deliveryStatus === 'delivering') {
+        this.logger.debug(`Driver ${driverId} is already delivering`);
+        return null;
+      }
+
+      // Kiểm tra tài xế có đơn hàng hiện tại không
+      if (driver.currentOrderId) {
+        this.logger.debug(`Driver ${driverId} has current order: ${driver.currentOrderId}`);
+        return null;
+      }
 
       // Lấy vị trí hiện tại của tài xế
       const location = await this.redisService.getDriverLocation(driverId);
-      if (!location) {
-        this.logger.warn(`No location data for driver: ${driverId}`);
+      if (!location || !location.lat || !location.lng) {
+        this.logger.warn(`No valid location data for driver: ${driverId}`);
         return null;
       }
 
       // Tính khoảng cách đến nhà hàng
       const distance = this.calculateDistance(
         location.lat, location.lng,
-        order.restaurantId?.coordinates?.lat || 0,
-        order.restaurantId?.coordinates?.lng || 0
+        order.restaurantCoordinates?.latitude || 0,
+        order.restaurantCoordinates?.longitude || 0
       );
 
       // Kiểm tra khoảng cách tối đa (10km)
-      if (distance > 10) return null;
+      if (distance > 10) {
+        this.logger.debug(`Driver ${driverId} too far: ${distance.toFixed(2)}km`);
+        return null;
+      }
+
+      // Kiểm tra tài xế có đạt yêu cầu tối thiểu không
+      const minRating = 3.0;
+      const driverRating = driver.rating || 0;
+      if (driverRating < minRating) {
+        this.logger.debug(`Driver ${driverId} rating too low: ${driverRating}`);
+        return null;
+      }
 
       return {
         driverId,
         distance,
-        rating: driver.rating || 4.0,
+        rating: driverRating,
         activeOrdersCount: driver.activeOrdersCount || 0,
         isAvailable: true,
         location
@@ -156,52 +212,110 @@ export class SmartDriverAssignmentService {
   }
 
   /**
-   * Lấy danh sách tài xế available
+   * Lấy danh sách tài xế available (kết hợp cache và DB để đảm bảo chính xác)
    */
   private async getAvailableDrivers(): Promise<string[]> {
-    // Lấy từ Redis cache trước
-    const cachedDrivers = await this.redisService.getAvailableDrivers();
-    if (cachedDrivers.length > 0) {
+    try {
+      // Lấy từ database để đảm bảo chính xác
+      const drivers = await this.driverModel
+        .find({ 
+          status: 'checkin',
+          deliveryStatus: { $in: [null, undefined] },
+          currentOrderId: { $in: [null, undefined] }
+        })
+        .select('_id')
+        .lean();
+
+      const driverIds = drivers.map(d => d._id.toString());
+      
+      // Cập nhật cache với dữ liệu mới nhất
+      await this.updateAvailableDriversCache(driverIds);
+
+      this.logger.debug(`Found ${driverIds.length} available drivers from DB`);
+      return driverIds;
+
+    } catch (error) {
+      this.logger.error('Error getting available drivers:', error);
+      // Fallback: lấy từ cache nếu có
+      const cachedDrivers = await this.redisService.getAvailableDrivers();
+      this.logger.warn(`Using cached drivers as fallback: ${cachedDrivers.length}`);
       return cachedDrivers;
     }
-
-    // Nếu không có cache, lấy từ database
-    const drivers = await this.driverModel
-      .find({ status: 'available' })
-      .select('_id')
-      .lean();
-
-    const driverIds = drivers.map(d => d._id.toString());
-    
-    // Cache vào Redis
-    for (const driverId of driverIds) {
-      await this.redisService.addAvailableDriver(driverId);
-    }
-
-    return driverIds;
   }
 
   /**
-   * Gán đơn hàng cho tài xế
+   * Cập nhật cache available drivers
+   */
+  private async updateAvailableDriversCache(driverIds: string[]): Promise<void> {
+    try {
+      // Xóa cache cũ
+      const cachedDrivers = await this.redisService.getAvailableDrivers();
+      for (const driverId of cachedDrivers) {
+        await this.redisService.removeAvailableDriver(driverId);
+      }
+
+      // Thêm cache mới
+      for (const driverId of driverIds) {
+        await this.redisService.addAvailableDriver(driverId);
+      }
+    } catch (error) {
+      this.logger.error('Error updating available drivers cache:', error);
+    }
+  }
+
+  /**
+   * Gán đơn hàng cho tài xế (atomic operation để tránh race condition)
    */
   async assignOrderToDriver(orderId: string, driverId: string): Promise<boolean> {
     try {
       this.logger.log(`Assigning order ${orderId} to driver ${driverId}`);
 
-      // Cập nhật đơn hàng
-      await this.orderModel.findByIdAndUpdate(orderId, {
-        driverId: new Types.ObjectId(driverId),
-        status: 'picking_up',
-        assignedAt: new Date()
-      });
+      // ATOMIC UPDATE: Chỉ cập nhật nếu đơn hàng chưa có tài xế
+      const orderUpdateResult = await this.orderModel.findOneAndUpdate(
+        { 
+          _id: orderId, 
+          driverId: { $in: [null, undefined] } // Chỉ gán nếu chưa có tài xế
+        },
+        {
+          driverId: new Types.ObjectId(driverId),
+          status: 'picking_up',
+          assignedAt: new Date()
+        },
+        { new: true }
+      );
 
-      // Cập nhật tài xế
-      await this.driverModel.findByIdAndUpdate(driverId, {
-        status: 'delivering',
-        currentOrderId: new Types.ObjectId(orderId),
-        currentOrderStartedAt: new Date(),
-        $inc: { activeOrdersCount: 1 }
-      });
+      if (!orderUpdateResult) {
+        this.logger.warn(`Order ${orderId} already has driver or not found`);
+        return false;
+      }
+
+      // ATOMIC UPDATE: Chỉ cập nhật nếu tài xế đang available
+      const driverUpdateResult = await this.driverModel.findOneAndUpdate(
+        { 
+          _id: driverId,
+          status: 'checkin',
+          deliveryStatus: { $in: [null, undefined] },
+          currentOrderId: { $in: [null, undefined] }
+        },
+        {
+          deliveryStatus: 'delivering',
+          currentOrderId: new Types.ObjectId(orderId),
+          currentOrderStartedAt: new Date(),
+          $inc: { activeOrdersCount: 1 }
+        },
+        { new: true }
+      );
+
+      if (!driverUpdateResult) {
+        this.logger.warn(`Driver ${driverId} is not available for assignment`);
+        // Rollback order update
+        await this.orderModel.findByIdAndUpdate(orderId, {
+          driverId: null,
+          status: 'ready',
+          assignedAt: null
+        });
+        return false;
+      }
 
       // Xóa khỏi pending orders
       await this.redisService.removePendingOrder(orderId);

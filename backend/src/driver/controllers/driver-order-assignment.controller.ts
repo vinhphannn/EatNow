@@ -76,7 +76,7 @@ export class DriverOrderAssignmentController {
         throw new HttpException('Driver not found', HttpStatus.NOT_FOUND);
       }
 
-      if (driver.status !== 'available') {
+      if (driver.status !== 'checkin') {
         throw new HttpException('Driver is not available', HttpStatus.BAD_REQUEST);
       }
 
