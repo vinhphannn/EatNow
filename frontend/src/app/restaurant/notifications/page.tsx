@@ -22,7 +22,8 @@ import {
   FormControl,
   InputLabel,
   Select,
-  SelectChangeEvent
+  SelectChangeEvent,
+  ListItemButton
 } from '@mui/material';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -311,87 +312,94 @@ export default function RestaurantNotificationsPage() {
             <List sx={{ p: 0 }}>
               {filteredNotifications.map((notification, index) => (
                 <React.Fragment key={notification.id}>
-                  <ListItem
-                    button
-                    onClick={() => handleNotificationClick(notification)}
-                    sx={{
-                      backgroundColor: notification.read ? 'transparent' : 'rgba(25, 118, 210, 0.08)',
-                      '&:hover': {
-                        backgroundColor: 'rgba(25, 118, 210, 0.12)'
-                      }
-                    }}
-                  >
-                    <ListItemIcon>
-                      {getNotificationIcon(notification.type)}
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={
-                        <Stack direction="row" alignItems="center" spacing={1}>
-                          <Typography 
-                            variant="subtitle1" 
-                            sx={{ 
-                              fontWeight: notification.read ? 'normal' : 'bold',
-                              color: notification.read ? 'text.secondary' : 'text.primary'
-                            }}
-                          >
-                            {notification.title}
-                          </Typography>
-                          <Chip
-                            label={notification.priority}
-                            size="small"
-                            color={getPriorityColor(notification.priority) as any}
-                            sx={{ fontSize: '0.7rem', height: 20 }}
-                          />
-                          {!notification.read && (
+                  <ListItem disablePadding>
+                    <ListItemButton
+                      onClick={() => handleNotificationClick(notification)}
+                      sx={{
+                        backgroundColor: notification.read
+                          ? 'transparent'
+                          : 'rgba(25, 118, 210, 0.08)',
+                        '&:hover': {
+                          backgroundColor: 'rgba(25, 118, 210, 0.12)'
+                        }
+                      }}
+                    >
+                      <ListItemIcon>
+                        {getNotificationIcon(notification.type)}
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={
+                          <Stack direction="row" alignItems="center" spacing={1}>
+                            <Typography
+                              variant="subtitle1"
+                              sx={{
+                                fontWeight: notification.read ? 'normal' : 'bold',
+                                color: notification.read ? 'text.secondary' : 'text.primary'
+                              }}
+                            >
+                              {notification.title}
+                            </Typography>
                             <Chip
-                              label="Mới"
+                              label={notification.priority}
                               size="small"
-                              color="error"
+                              color={getPriorityColor(notification.priority) as any}
                               sx={{ fontSize: '0.7rem', height: 20 }}
                             />
-                          )}
-                        </Stack>
-                      }
-                      secondary={
-                        <Box>
-                          <Typography 
-                            variant="body2" 
-                            color="text.secondary"
-                            sx={{ 
-                              fontWeight: notification.read ? 'normal' : 'medium',
-                              mb: 0.5
-                            }}
-                          >
-                            {notification.message}
-                          </Typography>
-                          <Stack direction="row" alignItems="center" spacing={1}>
-                            <FontAwesomeIcon icon={faClock} style={{ fontSize: 14, color: '#757575' }} />
-                            <Typography variant="caption" color="text.disabled">
-                              {formatTimeAgo(notification.timestamp)}
-                            </Typography>
-                            {notification.orderCode && (
+                            {!notification.read && (
                               <Chip
-                                label={notification.orderCode}
+                                label="Mới"
                                 size="small"
-                                variant="outlined"
-                                sx={{ fontSize: '0.7rem', height: 18 }}
+                                color="error"
+                                sx={{ fontSize: '0.7rem', height: 20 }}
                               />
                             )}
                           </Stack>
-                        </Box>
-                      }
-                    />
-                    <IconButton
-                      onClick={(e) => handleMenuClick(e, notification)}
-                      size="small"
-                    >
-                      <FontAwesomeIcon icon={faEllipsisVertical} />
-                    </IconButton>
+                        }
+                        secondary={
+                          <Box>
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{
+                                fontWeight: notification.read ? 'normal' : 'medium',
+                                mb: 0.5
+                              }}
+                            >
+                              {notification.message}
+                            </Typography>
+                            <Stack direction="row" alignItems="center" spacing={1}>
+                              <FontAwesomeIcon
+                                icon={faClock}
+                                style={{ fontSize: 14, color: '#757575' }}
+                              />
+                              <Typography variant="caption" color="text.disabled">
+                                {formatTimeAgo(notification.timestamp)}
+                              </Typography>
+                              {notification.orderCode && (
+                                <Chip
+                                  label={notification.orderCode}
+                                  size="small"
+                                  variant="outlined"
+                                  sx={{ fontSize: '0.7rem', height: 18 }}
+                                />
+                              )}
+                            </Stack>
+                          </Box>
+                        }
+                      />
+                      <IconButton
+                        onClick={(e) => handleMenuClick(e, notification)}
+                        size="small"
+                      >
+                        <FontAwesomeIcon icon={faEllipsisVertical} />
+                      </IconButton>
+                    </ListItemButton>
                   </ListItem>
                   {index < filteredNotifications.length - 1 && <Divider />}
                 </React.Fragment>
               ))}
             </List>
+              
           )}
         </CardContent>
       </Card>
