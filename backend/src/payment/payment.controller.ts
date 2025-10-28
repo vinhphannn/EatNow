@@ -292,6 +292,69 @@ export class PaymentController {
   }
 
   /**
+   * Manual confirm pending deposits
+   * POST /api/v1/payment/manual-confirm
+   * Body: { transactionIds: string[] }
+   */
+  @Post('manual-confirm')
+  async manualConfirmDeposits(@Body() body: { transactionIds: string[] }) {
+    try {
+      const { transactionIds } = body;
+      const results = [];
+
+      for (const transactionId of transactionIds) {
+        try {
+          // Tìm transaction pending
+          const transaction = await this.walletService.getTransactionById(transactionId);
+          
+          if (!transaction) {
+            results.push({ transactionId, status: 'not_found' });
+            continue;
+          }
+
+          if (transaction.status !== 'pending') {
+            results.push({ transactionId, status: 'already_processed', currentStatus: transaction.status });
+            continue;
+          }
+
+          // Confirm deposit với fake MoMo data
+          await this.walletService.confirmDeposit(
+            transactionId,
+            `manual_${transactionId}_${Date.now()}`,
+            {
+              orderId: transactionId,
+              amount: transaction.amount,
+              resultCode: 0,
+              message: 'Manual confirmation',
+              transId: `manual_${transactionId}_${Date.now()}`,
+              partnerCode: 'MANUAL',
+              responseTime: Date.now(),
+              payType: 'qr'
+            }
+          );
+
+          results.push({ transactionId, status: 'confirmed' });
+          this.logger.log(`✅ Manual confirmed: ${transactionId}`);
+
+        } catch (error) {
+          results.push({ transactionId, status: 'error', error: error.message });
+          this.logger.error(`❌ Manual confirm failed for ${transactionId}: ${error.message}`);
+        }
+      }
+
+      return {
+        success: true,
+        message: 'Manual confirmation completed',
+        results
+      };
+
+    } catch (error) {
+      this.logger.error(`❌ Manual confirm error: ${error.message}`);
+      return { success: false, message: error.message };
+    }
+  }
+
+  /**
    * Test MoMo callback manually
    * POST /api/v1/payment/test-callback
    */
@@ -372,7 +435,7 @@ export class PaymentController {
       return {
         success: true,
         transaction: {
-          id: transaction._id,
+          id: (transaction as any).id || (transaction as any)._id?.toString(),
           status: transaction.status,
           amount: transaction.amount,
           type: transaction.type,

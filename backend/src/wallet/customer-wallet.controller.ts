@@ -16,12 +16,24 @@ export class CustomerWalletController {
 
   @Get('balance')
   async getBalance(@Req() req: any) {
-    const actor = resolveActorRefFromReq(req, 'customer');
-    if (!actor.actorId) {
-      // Trả về số dư 0 nếu chưa có actorId
-      return { balance: 0, pendingBalance: 0, totalDeposits: 0, totalWithdrawals: 0, isActive: false };
+    try {
+      console.log('🔍 Customer Wallet: Request user:', req?.user);
+      const actor = resolveActorRefFromReq(req, 'customer');
+      console.log('🔍 Customer Wallet: Resolved actor:', actor);
+      
+      if (!actor.actorId) {
+        console.log('⚠️ Customer Wallet: No actorId found, returning zero balance');
+        // Trả về số dư 0 nếu chưa có actorId
+        return { balance: 0, pendingBalance: 0, escrowBalance: 0, totalDeposits: 0, totalWithdrawals: 0, isActive: false };
+      }
+      
+      const wallet = await this.walletService.getBalanceForActor(actor);
+      console.log('✅ Customer Wallet: Balance retrieved:', wallet);
+      return wallet;
+    } catch (error) {
+      console.error('❌ Customer Wallet: Error getting balance:', error);
+      throw error;
     }
-    return this.walletService.getBalanceForActor(actor);
   }
 
   @Get('transactions')

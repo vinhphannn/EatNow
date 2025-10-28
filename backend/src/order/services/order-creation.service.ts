@@ -26,6 +26,7 @@ export interface CreateOrderFromCartData {
   doorFee?: number;
   deliveryFee?: number;
   specialInstructions?: string;
+  items?: any[]; // For direct order creation from frontend
 }
 
 @Injectable()
@@ -50,18 +51,66 @@ export class OrderCreationService {
     orderData: CreateOrderFromCartData
   ): Promise<OrderDocument> {
     try {
-      // Get cart
+      console.log('🔍 OrderCreationService.createOrderFromCart started');
+      console.log('🔍 CustomerId:', customerId);
+      console.log('🔍 RestaurantId:', restaurantId);
+      console.log('🔍 OrderData:', JSON.stringify(orderData, null, 2));
+      
+      // Get cart (optional - for backward compatibility)
       const cart = await this.cartModel.findOne({
         userId: customerId,
         restaurantId: restaurantId
       }).lean();
 
       console.log('🔍 Cart found:', cart ? 'Yes' : 'No');
+      if (cart) {
+        console.log('🔍 Cart items count:', cart.items?.length || 0);
+        console.log('🔍 Cart total amount:', cart.totalAmount);
+      }
 
-      const cartValidation = OrderValidator.validateCart(cart);
-      if (!cartValidation.isValid) {
-        console.error('❌ Cart validation failed:', cartValidation.errorMessage);
-        throw new Error(cartValidation.errorMessage);
+      // If no cart found, create order directly from orderData
+      let orderItems;
+      let subtotal;
+      
+      if (cart && cart.items && cart.items.length > 0) {
+        // Use cart data
+        orderItems = cart.items.map(cartItem => ({
+          itemId: cartItem.itemId,
+          name: cartItem.name,
+          price: cartItem.price,
+          imageUrl: cartItem.imageUrl,
+          quantity: cartItem.quantity,
+          options: cartItem.options || [],
+          subtotal: cartItem.subtotal,
+          totalPrice: cartItem.totalPrice,
+          specialInstructions: ''
+        }));
+        subtotal = cart.totalAmount || 0;
+        console.log('🔍 Using cart data for order creation');
+      } else {
+        // Create order directly from orderData (from frontend)
+        console.log('🔍 No cart found, creating order directly from orderData');
+        
+        // Check if orderData has items
+        if (!orderData.items || !Array.isArray(orderData.items) || orderData.items.length === 0) {
+          throw new Error('Không có món ăn nào trong đơn hàng');
+        }
+        
+        orderItems = orderData.items.map(item => ({
+          itemId: item.itemId,
+          name: item.name,
+          price: item.price,
+          imageUrl: item.imageUrl || '',
+          quantity: item.quantity,
+          options: item.options || [],
+          subtotal: item.subtotal || (item.price * item.quantity),
+          totalPrice: item.totalPrice || (item.price * item.quantity),
+          specialInstructions: item.specialInstructions || ''
+        }));
+        
+        // Calculate subtotal from items
+        subtotal = orderItems.reduce((sum, item) => sum + (item.subtotal || 0), 0);
+        console.log('🔍 Calculated subtotal from orderData items:', subtotal);
       }
 
       // Get customer
@@ -69,6 +118,9 @@ export class OrderCreationService {
       if (!customer) {
         throw new NotFoundException('Customer not found');
       }
+      
+      // Get recipient phone for purchaserPhone fallback
+      const finalRecipientPhone = orderData.recipient?.phone || '';
 
       // Get restaurant info for coordinates
       const restaurant = await this.restaurantModel.findById(restaurantId);
@@ -77,9 +129,8 @@ export class OrderCreationService {
       }
 
       // Calculate totals using PricingService
-      const subtotal = cart.totalAmount || 0;
-      console.log('🔍 Cart data:', { cart: cart, subtotal, totalAmount: cart.totalAmount });
       console.log('🔍 Order data from frontend:', orderData);
+      console.log('🔍 Calculated subtotal:', subtotal);
       
       // Tính khoảng cách thực tế từ quán đến địa chỉ giao hàng (sử dụng OSRM routing API như frontend)
       const distanceKm = await this.distanceService.calculateRouteDistanceKm(
@@ -116,19 +167,6 @@ export class OrderCreationService {
       const pricing = this.pricingService.calculateOrderPricing(pricingInput);
       
       console.log('🔍 Calculated pricing:', pricing);
-
-      // Prepare order items from cart
-      const orderItems = cart.items.map(cartItem => ({
-        itemId: cartItem.itemId,
-        name: cartItem.name,
-        price: cartItem.price,
-        imageUrl: cartItem.imageUrl,
-        quantity: cartItem.quantity,
-        options: cartItem.options || [],
-        subtotal: cartItem.subtotal,
-        totalPrice: cartItem.totalPrice,
-        specialInstructions: ''
-      }));
 
       // Format delivery address
       const formattedDeliveryAddress = this.formatDeliveryAddress(orderData.deliveryAddress);
@@ -175,7 +213,22 @@ export class OrderCreationService {
           recipientPhone: formattedDeliveryAddress.recipientPhone || orderData.recipient.phone,
         },
         specialInstructions: orderData.specialInstructions || '',
-        purchaserPhone: (customer as any)?.phone || '',
+        purchaserPhone: (() => {
+          const customerPhone = (customer as any)?.phone;
+          const recipientPhone = orderData.recipient?.phone;
+          const finalPhone = finalRecipientPhone;
+          const fallbackPhone = '0000000000';
+          
+          const result = customerPhone || recipientPhone || finalPhone || fallbackPhone;
+          console.log('🔍 PurchaserPhone debug:', {
+            customerPhone,
+            recipientPhone, 
+            finalPhone,
+            fallbackPhone,
+            result
+          });
+          return result;
+        })(),
         paymentMethod: orderData.paymentMethod,
         status: OrderStatus.PENDING,
         deliveryMode: orderData.deliveryMode || 'immediate',

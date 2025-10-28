@@ -85,6 +85,7 @@ export class WalletService {
         restaurantId: new Types.ObjectId(restaurantId),
         balance: 0,
         pendingBalance: 0,
+        escrowBalance: 0, // ✅ Thêm escrowBalance
         totalDeposits: 0,
         totalWithdrawals: 0,
         isActive: true,
@@ -101,6 +102,7 @@ export class WalletService {
       restaurantId: new Types.ObjectId(restaurantId),
       balance: 0,
       pendingBalance: 0,
+      escrowBalance: 0, // ✅ Thêm escrowBalance
       totalDeposits: 0,
       totalWithdrawals: 0,
       isActive: true,
@@ -114,6 +116,7 @@ export class WalletService {
     return {
       balance: wallet.balance,
       pendingBalance: wallet.pendingBalance,
+      escrowBalance: wallet.escrowBalance || 0, // ✅ Thêm escrowBalance
       totalDeposits: wallet.totalDeposits,
       totalWithdrawals: wallet.totalWithdrawals,
     };
@@ -141,6 +144,7 @@ export class WalletService {
     return {
       balance: wallet.balance,
       pendingBalance: wallet.pendingBalance,
+      escrowBalance: wallet.escrowBalance || 0, // ✅ Thêm escrowBalance
       totalDeposits: wallet.totalDeposits,
       totalWithdrawals: wallet.totalWithdrawals,
       isActive: wallet.isActive,
@@ -508,11 +512,12 @@ export class WalletService {
     let wallet = await this.walletModel.findOne(query);
 
     if (!wallet) {
-      // Tạo wallet nếu chưa có
+      // Tạo wallet nếu chưa có (bắt duplicate key để đảm bảo only-one-wallet-per-user)
       const walletData: any = {
         ownerType,
         balance: 0,
         pendingBalance: 0,
+        escrowBalance: 0,
         totalDeposits: 0,
         totalWithdrawals: 0,
         isActive: true,
@@ -526,7 +531,16 @@ export class WalletService {
         walletData.driverId = new Types.ObjectId(actorId);
       }
 
-      wallet = await this.walletModel.create(walletData);
+      try {
+        wallet = await this.walletModel.create(walletData);
+      } catch (e: any) {
+        // Nếu bị duplicate do race-condition → lấy lại ví hiện có
+        if (e && (e.code === 11000 || String(e.message).includes('duplicate key'))) {
+          wallet = await this.walletModel.findOne(query);
+        } else {
+          throw e;
+        }
+      }
     }
 
     return wallet;
@@ -604,12 +618,6 @@ export class WalletService {
     }
   }
 
-  /**
-   * Get transaction by ID
-   */
-  async getTransactionById(transactionId: string) {
-    return await this.walletTransactionModel.findById(transactionId);
-  }
 
   /**
    * Confirm deposit - Call từ MoMo callback
@@ -831,6 +839,7 @@ export class WalletService {
           ownerType: 'admin',
           balance: 0,
           pendingBalance: 0,
+          escrowBalance: 0, // ✅ Thêm escrowBalance
           totalDeposits: 0,
           totalWithdrawals: 0,
           isActive: true,
@@ -866,5 +875,17 @@ export class WalletService {
     await this.walletTransactionModel.findByIdAndUpdate(transactionId, {
       $set: { providerPaymentUrl: paymentUrl }
     });
+  }
+
+  /**
+   * Lấy transaction theo ID
+   */
+  async getTransactionById(transactionId: string): Promise<WalletTransaction | null> {
+    try {
+      return await this.walletTransactionModel.findById(transactionId).exec();
+    } catch (error) {
+      this.logger.error(`❌ Error getting transaction ${transactionId}: ${error.message}`);
+      return null;
+    }
   }
 }

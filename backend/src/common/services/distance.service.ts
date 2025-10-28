@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import axios from 'axios';
 
 @Injectable()
 export class DistanceService {
@@ -89,16 +90,16 @@ export class DistanceService {
   async calculateRouteDistanceKm(from: { lat: number; lng: number }, to: { lat: number; lng: number }): Promise<number> {
     try {
       // Use OSRM API to get actual road distance (same as frontend)
-      const response = await fetch(
+      const response = await axios.get(
         `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`
       );
       
-      if (!response.ok) {
+      if (response.status !== 200) {
         console.warn('OSRM API failed, falling back to Haversine distance');
         return this.calculateDistanceKm(from.lat, from.lng, to.lat, to.lng);
       }
       
-      const data = await response.json();
+      const data = response.data;
       
       if (data.routes && data.routes.length > 0) {
         const distanceInMeters = data.routes[0].distance;

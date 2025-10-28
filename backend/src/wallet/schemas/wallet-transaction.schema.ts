@@ -54,7 +54,7 @@ export class WalletTransaction {
   @Prop()
   description: string;  // Mô tả giao dịch
 
-  @Prop({ required: true, enum: ['pending', 'completed', 'failed', 'cancelled'], default: 'pending' })
+  @Prop({ required: true, enum: ['pending', 'completed', 'failed', 'cancelled', 'escrowed'], default: 'pending' })
   status: string;
 
   // MoMo Integration fields

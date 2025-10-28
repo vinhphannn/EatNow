@@ -129,6 +129,12 @@ export class OrderService {
       // Get restaurantId from orderData
       const restaurantId = orderData.restaurantId;
       
+      if (!restaurantId) {
+        throw new Error('Restaurant ID is required');
+      }
+      
+      console.log('🔍 Creating order with restaurantId:', restaurantId);
+      
       const savedOrder = await this.orderCreationService.createOrderFromCart(customerId, restaurantId, {
         deliveryAddress: formattedDeliveryAddress,
         recipient: {
@@ -141,7 +147,8 @@ export class OrderService {
         tip: orderData.tip || 0,
         doorFee: orderData.doorFee || false,
         deliveryFee: orderData.deliveryFee, // Pass deliveryFee from frontend for verification
-        specialInstructions: specialInstructions || ''
+        specialInstructions: specialInstructions || '',
+        items: orderData.items // Pass items from frontend
       });
 
       // TÌM TÀI XẾ NGAY KHI TẠO ĐƠN
@@ -174,8 +181,28 @@ export class OrderService {
 
       return savedOrder;
     } catch (error) {
-      console.error('Error creating order:', error);
-      throw error;
+      console.error('❌ Error creating order:', error);
+      console.error('❌ Error stack:', error.stack);
+      console.error('❌ Error message:', error.message);
+      
+      // Return more specific error messages
+      if (error.message.includes('Restaurant ID is required')) {
+        throw new Error('Restaurant ID is required');
+      }
+      if (error.message.includes('Customer not found')) {
+        throw new Error('Customer not found');
+      }
+      if (error.message.includes('Restaurant not found')) {
+        throw new Error('Restaurant not found');
+      }
+      if (error.message.includes('Cart validation failed')) {
+        throw new Error('Cart validation failed: ' + error.message);
+      }
+      if (error.message.includes('Failed to create order')) {
+        throw new Error('Failed to create order: ' + error.message);
+      }
+      
+      throw new Error('Internal server error while creating order: ' + error.message);
     }
   }
 
