@@ -32,9 +32,32 @@ import {
   TruckIcon
 } from '@heroicons/react/24/outline';
 
+interface OrderData {
+  orderId: string;
+  orderCode: string;
+  restaurantName: string;
+  restaurantAddress: string;
+  deliveryAddress: string;
+  recipientName: string;
+  recipientPhone?: string;
+  finalTotal: number;
+  deliveryFee: number;
+  driverTip: number;
+  driverPayment: number;
+  deliveryDistance: number;
+  createdAt: string;
+  specialInstructions: string;
+  paymentMethod: string;
+  timestamp: string;
+  // Additional fields for compatibility
+  items?: any[];
+  subtotal?: number;
+  customerId?: any;
+}
+
 interface NewOrderNotificationProps {
   open: boolean;
-  order: any;
+  order: OrderData | null;
   onAccept: (orderId: string) => void;
   onReject: (orderId: string) => void;
   onClose: () => void;
@@ -61,25 +84,26 @@ export default function NewOrderNotification({
 
   // Safely extract order data with fallbacks
   const orderData = {
-    _id: order._id || order.id || 'unknown',
-    orderCode: order.orderCode || order.order_code || order.code || (order.id ? order.id.toString().slice(-8).toUpperCase() : 'N/A'),
-    items: Array.isArray(order.items) ? order.items : (order.orderItems ? order.orderItems : []),
-    subtotal: order.subtotal || 0, // Tiền món ăn
-    total: order.subtotal || order.total || 0, // Dùng subtotal thay vì total
-    deliveryFee: order.deliveryFee || order.delivery_fee || 0,
-    tip: order.tip || 0,
-    doorFee: order.doorFee || order.door_fee || 0,
-    finalTotal: order.finalTotal || order.final_total || (order.subtotal || 0) + (order.deliveryFee || 0) + (order.tip || 0) + (order.doorFee || 0),
-    restaurantRevenue: order.restaurantRevenue || order.restaurant_revenue || 0, // Tiền quán nhận
-    paymentMethod: order.paymentMethod || order.payment_method || 'cash',
-    customerId: order.customerId || order.customer || {},
-    recipientName: order.recipientName || order.recipient_name || order.deliveryAddress?.recipientName || order.customerId?.name || 'Chưa cập nhật',
-    recipientPhonePrimary: order.recipientPhonePrimary || order.recipient_phone || order.deliveryAddress?.recipientPhone || order.customerId?.phone || 'Chưa cập nhật',
-    deliveryAddress: order.deliveryAddress || order.delivery_address || 'Địa chỉ không xác định',
-    deliveryDistance: order.deliveryDistance || order.delivery_distance || 0,
-    estimatedDeliveryTime: order.estimatedDeliveryTime || order.estimated_delivery_time,
-    specialInstructions: order.specialInstructions || order.special_instructions || '',
-    createdAt: order.createdAt || order.created_at || new Date().toISOString()
+    _id: order?.orderId || 'unknown',
+    orderCode: order?.orderCode || `#${(order?.orderId || '').slice(-6)}`,
+    items: [], // Không có items trong notification
+    subtotal: 0, // Không có subtotal trong notification
+    total: order?.finalTotal || 0,
+    deliveryFee: order?.deliveryFee || 0,
+    tip: order?.driverTip || 0,
+    doorFee: 0, // Không có doorFee trong notification
+    finalTotal: order?.finalTotal || 0,
+    driverPayment: order?.driverPayment || 0, // Tiền tài xế nhận được
+    restaurantRevenue: 0, // Không có trong notification
+    paymentMethod: order?.paymentMethod || 'cash',
+    customerId: {},
+    recipientName: order?.recipientName || 'Chưa cập nhật',
+    recipientPhonePrimary: order?.recipientPhone || 'Chưa cập nhật',
+    deliveryAddress: order?.deliveryAddress || 'Địa chỉ không xác định',
+    deliveryDistance: order?.deliveryDistance || 0,
+    estimatedDeliveryTime: null,
+    specialInstructions: order?.specialInstructions || '',
+    createdAt: order?.createdAt || new Date().toISOString()
   };
 
   const formatPrice = (price: number) => {
@@ -174,10 +198,8 @@ export default function NewOrderNotification({
                   Địa chỉ giao hàng
                 </Typography>
               </Stack>
-              <Typography variant="body1" fontWeight={600} sx={{ mb: 1 }}>
-                {typeof orderData.deliveryAddress === 'string' 
-                  ? orderData.deliveryAddress 
-                  : (orderData.deliveryAddress?.addressLine || orderData.deliveryAddress?.label || 'Địa chỉ không xác định')}
+                <Typography variant="body1" fontWeight={600} sx={{ mb: 1 }}>
+                {orderData.deliveryAddress}
               </Typography>
               {orderData.deliveryDistance > 0 && (
                 <Typography variant="body2" color="text.secondary">
@@ -264,24 +286,45 @@ export default function NewOrderNotification({
               <Stack spacing={1}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                   <Typography variant="body2" color="text.secondary">
-                    Tạm tính ({orderData.items.length} món):
+                    Tổng đơn hàng:
                   </Typography>
                   <Typography variant="body2" fontWeight={600}>
-                    {formatPrice(orderData.total)}
+                    {formatPrice(orderData.finalTotal)}
                   </Typography>
                 </Stack>
-                <Divider />
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography variant="body2" fontWeight={600}>
-                      Quán nhận về:
-                    </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Phí giao hàng:
+                  </Typography>
+                  <Typography variant="body2" fontWeight={600}>
+                    {formatPrice(orderData.deliveryFee)}
+                  </Typography>
+                </Stack>
+                {orderData.tip > 0 && (
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
                     <Typography variant="body2" color="text.secondary">
-                      {orderData.paymentMethod === 'cash' ? '💵 Tiền mặt' : '💳 Chuyển khoản'}
+                      Thưởng từ khách:
+                    </Typography>
+                    <Typography variant="body2" fontWeight={600} color="success.main">
+                      +{formatPrice(orderData.tip)}
                     </Typography>
                   </Stack>
-                  <Typography variant="h6" color="success.main" fontWeight={700}>
-                    {formatPrice(orderData.restaurantRevenue || orderData.total)}
+                )}
+                <Divider />
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="h6" fontWeight={700} color="success.main">
+                    🎯 Bạn nhận được:
+                  </Typography>
+                  <Typography variant="h6" fontWeight={700} color="success.main">
+                    {formatPrice(orderData.driverPayment)}
+                  </Typography>
+                </Stack>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="body2" color="text.secondary">
+                    Phương thức thanh toán:
+                  </Typography>
+                  <Typography variant="body2" fontWeight={600}>
+                    {orderData.paymentMethod === 'cash' ? '💵 Tiền mặt' : '💳 Chuyển khoản'}
                   </Typography>
                 </Stack>
               </Stack>

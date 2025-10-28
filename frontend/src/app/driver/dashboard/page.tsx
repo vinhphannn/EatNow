@@ -11,6 +11,67 @@ import { driverService } from "@/services/driver.service";
 import { useToast } from "@/components";
 import { useSocket } from "@/hooks/useSocket";
 import NewOrderNotification from "@/components/NewOrderNotification";
+
+interface AvailableOrder {
+  _id: string;
+  orderCode?: string;
+  restaurantId: {
+    _id: string;
+    name: string;
+    address: string;
+    phone?: string;
+    coordinates?: {
+      latitude: number;
+      longitude: number;
+    };
+  };
+  customerId: {
+    _id: string;
+    name: string;
+    phone: string;
+    email: string;
+  };
+  deliveryAddress: {
+    addressLine: string;
+    recipientName: string;
+    recipientPhone: string;
+    latitude?: number;
+    longitude?: number;
+    label?: string;
+    note?: string;
+  };
+  status: string;
+  finalTotal: number;
+  subtotal: number;
+  deliveryFee: number;
+  driverTip?: number;
+  tip?: number;
+  doorFee?: number;
+  driverPayment?: number;
+  createdAt: string;
+  specialInstructions?: string;
+  paymentMethod: 'cash' | 'bank_transfer';
+  deliveryDistance?: number;
+  estimatedDeliveryTime?: string;
+  actualDeliveryTime?: string;
+  scheduledAt?: string;
+  voucherCode?: string;
+  platformFeeRate?: number;
+  platformFeeAmount?: number;
+  driverCommissionRate?: number;
+  driverCommissionAmount?: number;
+  customerPayment?: number;
+  restaurantRevenue?: number;
+  // Legacy fields for backward compatibility
+  restaurantName?: string;
+  restaurantAddress?: string;
+  customerAddress?: string;
+  customerName?: string;
+  restaurantLat?: number;
+  restaurantLng?: number;
+  customerLat?: number;
+  customerLng?: number;
+}
 import type { DriverDashboardStats } from "@/types/driver";
 
 export default function DriverDashboardPage() {
@@ -30,13 +91,18 @@ export default function DriverDashboardPage() {
   } | null>(null);
   const [loading, setLoading] = useState(false);
   
+  // Available orders state
+  const [availableOrders, setAvailableOrders] = useState<AvailableOrder[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+  const [acceptingOrder, setAcceptingOrder] = useState<string | null>(null);
+  
   // Socket connection
   const { socket, connected } = useSocket(api);
   
   // New order notification popup
   const [newOrderPopup, setNewOrderPopup] = useState<{
     open: boolean;
-    order: any;
+    order: AvailableOrder | null;
   }>({
     open: false,
     order: null
@@ -58,6 +124,70 @@ export default function DriverDashboardPage() {
       router.push('/driver/login');
     }
   }, [isAuthenticated, isLoading, user, router]);
+
+  const fetchAvailableOrders = async () => {
+    try {
+      setLoadingOrders(true);
+      const response = await fetch(`${api}/api/v1/orders/available`, {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setAvailableOrders(data || []);
+      } else {
+        console.error('Failed to fetch available orders');
+        setAvailableOrders([]);
+      }
+    } catch (e: any) {
+      console.error('Error fetching available orders:', e);
+      setAvailableOrders([]);
+    } finally {
+      setLoadingOrders(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      // Gọi API logout để xóa session và cookie trên server
+      await fetch(`${api}/api/v1/auth/logout`, {
+        method: 'POST',
+        credentials: 'include'
+      });
+    } catch (error) {
+      console.error('Logout API error:', error);
+    } finally {
+      // Chuyển hướng đến trang login (cookie sẽ được xóa bởi server)
+      if (typeof window !== 'undefined') {
+        window.location.href = '/driver/login';
+      }
+    }
+  };
+
+  const handleAcceptOrder = async (orderId: string) => {
+    try {
+      setAcceptingOrder(orderId);
+      
+      const response = await fetch(`${api}/api/v1/orders/${orderId}/accept`, {
+        method: 'PATCH',
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        showToast('Đã nhận đơn hàng thành công!', 'success');
+        setNewOrderPopup({ open: false, order: null }); // Close popup
+        await fetchAvailableOrders(); // Refresh available orders
+        router.push('/driver/current'); // Go to current orders
+      } else {
+        const errorData = await response.json();
+        showToast(errorData.message || 'Không thể nhận đơn hàng', 'error');
+      }
+    } catch (e: any) {
+      showToast('Lỗi khi nhận đơn hàng: ' + e.message, 'error');
+    } finally {
+      setAcceptingOrder(null);
+    }
+  };
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -88,10 +218,12 @@ export default function DriverDashboardPage() {
 
     fetchStats();
     fetchDriverStatus();
+    fetchAvailableOrders(); // Load available orders
     
     const id = setInterval(() => {
       fetchStats();
       fetchDriverStatus();
+      fetchAvailableOrders(); // Refresh available orders periodically
     }, 60_000);
     return () => clearInterval(id);
   }, []);
@@ -181,9 +313,79 @@ export default function DriverDashboardPage() {
 
       socket.on('order_assign:v1', onOrderAssigned);
       
+      // Listen for new order notification (from smart assignment)
+      const onNewOrderNotification = (payload: any) => {
+        console.log('🔔 New order notification received:', payload);
+        
+        // Convert notification data to AvailableOrder format
+        const orderData: AvailableOrder = {
+          _id: payload.orderId,
+          orderCode: payload.orderCode,
+          restaurantId: {
+            _id: '',
+            name: payload.restaurantName,
+            address: payload.restaurantAddress,
+            phone: ''
+          },
+          customerId: {
+            _id: '',
+            name: payload.recipientName,
+            phone: '',
+            email: ''
+          },
+          deliveryAddress: {
+            addressLine: payload.deliveryAddress,
+            recipientName: payload.recipientName,
+            recipientPhone: ''
+          },
+          status: 'pending',
+          finalTotal: payload.finalTotal,
+          subtotal: 0,
+          deliveryFee: payload.deliveryFee,
+          driverTip: payload.driverTip,
+          tip: payload.driverTip,
+          doorFee: 0,
+          driverPayment: payload.driverPayment,
+          createdAt: payload.createdAt,
+          specialInstructions: payload.specialInstructions,
+          paymentMethod: payload.paymentMethod,
+          deliveryDistance: payload.deliveryDistance
+        };
+        
+        setNewOrderPopup({ 
+          open: true, 
+          order: {
+            orderId: orderData._id,
+            orderCode: orderData.orderCode,
+            restaurantName: orderData.restaurantId.name,
+            restaurantAddress: orderData.restaurantId.address,
+            deliveryAddress: orderData.deliveryAddress.addressLine || '',
+            recipientName: orderData.deliveryAddress.recipientName,
+            recipientPhone: orderData.deliveryAddress.recipientPhone,
+            finalTotal: orderData.finalTotal,
+            deliveryFee: orderData.deliveryFee,
+            driverTip: orderData.driverTip,
+            driverPayment: orderData.driverPayment,
+            deliveryDistance: orderData.deliveryDistance,
+            createdAt: orderData.createdAt,
+            specialInstructions: orderData.specialInstructions,
+            paymentMethod: orderData.paymentMethod,
+            timestamp: new Date().toISOString()
+          } as any
+        });
+        
+        // Play notification sound
+        if (notificationSound) {
+          notificationSound.play().catch(console.error);
+        }
+      };
+      
+      socket.on('new_order_notification', onNewOrderNotification);
+      
       return () => {
         console.log('🧹 Cleaning up driver socket listeners');
         socket.off('order_assign:v1', onOrderAssigned);
+        socket.off('new_order_notification', onNewOrderNotification);
       };
     }
   }, [socket, connected, user, api, showToast, notificationSound]);
@@ -199,36 +401,6 @@ export default function DriverDashboardPage() {
     );
   }
 
-  // Handle order acceptance
-  const handleAcceptOrder = async (orderId: string) => {
-    try {
-      // Stop notification sound
-      if (notificationSound) {
-        notificationSound.pause();
-        notificationSound.currentTime = 0;
-        setNotificationSound(null);
-      }
-      
-      // Update order status to picked_up
-      const response = await fetch(`${api}/api/v1/orders/${orderId}/status`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ status: 'picked_up' })
-      });
-
-      if (response.ok) {
-        setNewOrderPopup({ open: false, order: null });
-        showToast('Đã nhận đơn hàng thành công!', 'success');
-        router.push('/driver/current');
-      } else {
-        showToast('Không thể nhận đơn hàng', 'error');
-      }
-    } catch (error) {
-      showToast('Có lỗi xảy ra', 'error');
-    }
-  };
-
   const handleRejectOrder = async (orderId: string) => {
     try {
       // Stop notification sound
@@ -238,19 +410,11 @@ export default function DriverDashboardPage() {
         setNotificationSound(null);
       }
       
-      // Update order status to rejected/cancelled
-      const response = await fetch(`${api}/api/v1/orders/${orderId}/reject`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-      });
-
-      if (response.ok) {
-        setNewOrderPopup({ open: false, order: null });
-        showToast('Đã từ chối đơn hàng', 'info');
-      } else {
-        showToast('Không thể từ chối đơn hàng', 'error');
-      }
+      // Close popup and show message
+      setNewOrderPopup({ open: false, order: null });
+      showToast('Đã bỏ qua đơn hàng', 'info');
+      
+      // Note: Không cần gọi API reject vì đơn hàng sẽ được gán cho tài xế khác
     } catch (error) {
       showToast('Có lỗi xảy ra', 'error');
     }
@@ -265,7 +429,7 @@ export default function DriverDashboardPage() {
       {/* Order notification popup */}
       <NewOrderNotification
         open={newOrderPopup.open}
-        order={newOrderPopup.order}
+        order={newOrderPopup.order as any}
         onAccept={handleAcceptOrder}
         onReject={handleRejectOrder}
         onClose={handleClosePopup}
@@ -315,19 +479,17 @@ export default function DriverDashboardPage() {
                     setLoading(false);
                   }
                 }}
-                disabled={loading || driverStatus?.deliveryStatus === 'delivering'}
+                disabled={loading}
                 className={`rounded-full px-4 py-2 text-sm font-medium shadow ${
-                  loading || driverStatus?.deliveryStatus === 'delivering'
+                  loading
                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                     : 'bg-red-600 text-white hover:bg-red-700'
                 }`}
               >
-                {loading ? 'Đang xử lý...' : 
-                 driverStatus?.deliveryStatus === 'delivering' ? 'Đang giao hàng' : 
-                 'Check Out'}
+                {loading ? 'Đang xử lý...' : 'Check Out'}
               </button>
             ) : (
-              // Chưa check in hoặc checkout -> hiện nút Check In để bắt đầu làm việc
+              // Chưa check in -> hiện nút Check In để bắt đầu làm việc
               <button
                 onClick={async () => {
                   try {
@@ -356,18 +518,14 @@ export default function DriverDashboardPage() {
                     setLoading(false);
                   }
                 }}
-                disabled={loading || driverStatus?.status === 'ban'}
+                disabled={loading}
                 className={`rounded-full px-4 py-2 text-sm font-medium shadow ${
                   loading
                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : driverStatus?.status === 'ban'
-                    ? 'bg-red-300 text-red-500 cursor-not-allowed'
                     : 'bg-green-600 text-white hover:bg-green-700'
                 }`}
               >
-                {loading ? 'Đang xử lý...' : 
-                 driverStatus?.status === 'ban' ? 'Bị cấm' : 
-                 'Check In'}
+                {loading ? 'Đang xử lý...' : 'Check In'}
               </button>
             )}
             {driverStatus?.lastCheckinAt && driverStatus?.status === 'checkin' && (
@@ -409,6 +567,192 @@ export default function DriverDashboardPage() {
               <div className="mb-3 text-base font-semibold text-gray-800">Bản đồ realtime</div>
               <MapWithFallback />
             </div>
+            
+            {/* Available Orders Section */}
+            <div className="mt-6 card p-4">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-base font-semibold text-gray-800">Đơn hàng có sẵn</h3>
+                <button
+                  onClick={fetchAvailableOrders}
+                  disabled={loadingOrders}
+                  className="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                >
+                  {loadingOrders ? 'Đang tải...' : 'Làm mới'}
+                </button>
+              </div>
+              
+              {loadingOrders ? (
+                <div className="text-center py-4">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500 mx-auto"></div>
+                  <p className="mt-2 text-sm text-gray-600">Đang tải đơn hàng...</p>
+                </div>
+              ) : availableOrders.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <div className="text-4xl mb-2">📦</div>
+                  <p>Không có đơn hàng nào</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {availableOrders.map((order) => (
+                    <div key={order._id} className="border rounded-lg p-4 bg-white shadow-sm hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          {/* Header với ID và trạng thái */}
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="text-sm font-medium text-gray-900">
+                              Đơn #{order._id.slice(-8).toUpperCase()}
+                            </span>
+                            <span className={`px-2 py-1 text-xs rounded-full ${
+                              order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                              order.status === 'confirmed' ? 'bg-blue-100 text-blue-800' :
+                              order.status === 'preparing' ? 'bg-orange-100 text-orange-800' :
+                              order.status === 'ready' ? 'bg-green-100 text-green-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {order.status === 'pending' ? 'Chờ xác nhận' :
+                               order.status === 'confirmed' ? 'Đã xác nhận' :
+                               order.status === 'preparing' ? 'Đang chuẩn bị' :
+                               order.status === 'ready' ? 'Sẵn sàng' : order.status}
+                            </span>
+                          </div>
+                          
+                          {/* Thông tin chính */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                            {/* Nhà hàng */}
+                            <div className="flex items-start gap-2">
+                              <span className="text-orange-500 mt-0.5">🏪</span>
+                              <div>
+                                <div className="text-sm font-medium text-gray-900">
+                                  {order.restaurantId?.name || 'N/A'}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  {order.restaurantId?.address || 'N/A'}
+                                </div>
+                                {order.restaurantId?.phone && (
+                                  <div className="text-xs text-gray-500">
+                                    📞 {order.restaurantId.phone}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {/* Địa chỉ giao hàng */}
+                            <div className="flex items-start gap-2">
+                              <span className="text-blue-500 mt-0.5">📍</span>
+                              <div>
+                                <div className="text-sm font-medium text-gray-900">
+                                  {order.deliveryAddress?.recipientName || 'N/A'}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  {order.deliveryAddress?.addressLine || 'N/A'}
+                                </div>
+                                {order.deliveryAddress?.recipientPhone && (
+                                  <div className="text-xs text-gray-500">
+                                    📞 {order.deliveryAddress.recipientPhone}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* Khoảng cách và thời gian */}
+                          <div className="flex items-center gap-4 mb-3 text-xs text-gray-500">
+                            {order.deliveryDistance && (
+                              <div className="flex items-center gap-1">
+                                <span>📏</span>
+                                <span>{order.deliveryDistance.toFixed(1)} km</span>
+                              </div>
+                            )}
+                            <div className="flex items-center gap-1">
+                              <span>⏰</span>
+                              <span>{new Date(order.createdAt).toLocaleString('vi-VN', { 
+                                hour: '2-digit', 
+                                minute: '2-digit',
+                                day: '2-digit',
+                                month: '2-digit'
+                              })}</span>
+                            </div>
+                            {order.estimatedDeliveryTime && (
+                              <div className="flex items-center gap-1">
+                                <span>🚚</span>
+                                <span>Dự kiến: {new Date(order.estimatedDeliveryTime).toLocaleString('vi-VN', { 
+                                  hour: '2-digit', 
+                                  minute: '2-digit'
+                                })}</span>
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Chi tiết tiền */}
+                          <div className="bg-gray-50 rounded-lg p-3 mb-3">
+                            <div className="grid grid-cols-2 gap-2 text-sm">
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Tạm tính:</span>
+                                <span>{formatCurrency(order.subtotal || 0)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Phí ship:</span>
+                                <span>{formatCurrency(order.deliveryFee || 0)}</span>
+                              </div>
+                              {(order.driverTip || 0) > 0 && (
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Tip:</span>
+                                  <span className="text-green-600">{formatCurrency(order.driverTip || 0)}</span>
+                                </div>
+                              )}
+                              {(order.doorFee || 0) > 0 && (
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Phí cửa:</span>
+                                  <span>{formatCurrency(order.doorFee || 0)}</span>
+                                </div>
+                              )}
+                              <div className="flex justify-between font-semibold text-gray-900 col-span-2 border-t pt-1">
+                                <span>Tổng cộng:</span>
+                                <span>{formatCurrency(order.finalTotal || 0)}</span>
+                              </div>
+                              {order.driverPayment && (
+                                <div className="flex justify-between text-orange-600 font-medium col-span-2">
+                                  <span>Bạn nhận:</span>
+                                  <span>{formatCurrency(order.driverPayment)}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          
+                          {/* Ghi chú đặc biệt */}
+                          {order.specialInstructions && (
+                            <div className="text-xs text-gray-600 mb-2 p-2 bg-yellow-50 rounded">
+                              <span className="font-medium">📝 Ghi chú:</span> {order.specialInstructions}
+                            </div>
+                          )}
+                          
+                          {/* Phương thức thanh toán */}
+                          <div className="text-xs text-gray-500">
+                            💳 {order.paymentMethod === 'cash' ? 'Thanh toán tiền mặt' : 'Chuyển khoản'}
+                          </div>
+                        </div>
+                        
+                        {/* Nút nhận đơn */}
+                        <div className="ml-4 flex flex-col gap-2">
+                          <button
+                            onClick={() => handleAcceptOrder(order._id)}
+                            disabled={acceptingOrder === order._id || driverStatus?.status !== 'checkin'}
+                            className="px-4 py-2 bg-orange-500 text-white text-sm rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                          >
+                            {acceptingOrder === order._id ? 'Đang nhận...' : 'Nhận đơn'}
+                          </button>
+                          {driverStatus?.status !== 'checkin' && (
+                            <span className="text-xs text-red-500 text-center">
+                              Cần check-in
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <div>
             <div className="card p-4">
@@ -417,6 +761,7 @@ export default function DriverDashboardPage() {
                 <QuickLink href="/driver/current" label="Đơn hiện tại" />
                 <QuickLink href="/driver/history" label="Lịch sử" />
                 <QuickLink href="/driver/earnings" label="Thu nhập" />
+                <QuickLink href="/driver/wallet" label="Ví tiền" />
                 <QuickLink href="/driver/profile" label="Hồ sơ" />
               </div>
             </div>
@@ -428,7 +773,7 @@ export default function DriverDashboardPage() {
                 <div>Tên: {user?.name}</div>
               </div>
               <button
-                onClick={() => { localStorage.removeItem('driverToken'); router.push('/driver/login'); }}
+                onClick={handleLogout}
                 className="mt-4 w-full rounded-md bg-red-600 px-4 py-2 text-white hover:bg-red-700"
               >Đăng xuất</button>
             </div>

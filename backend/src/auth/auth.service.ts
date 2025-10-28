@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { User, UserDocument } from '../user/schemas/user.schema';
 import { UserService } from '../user/user.service';
 import { Customer, CustomerDocument } from '../customer/schemas/customer.schema';
@@ -69,10 +69,10 @@ export class AuthService {
     } else if ((u as any).role === 'driver') {
       // Ensure driver profile exists and is linked for driver role on login as well
       try {
-        let driver = await this.driverModel.findOne({ userId: (fullUser as any)?._id }).lean();
+        let driver = await this.driverModel.findOne({ userId: new Types.ObjectId((fullUser as any)?._id) }).lean();
         if (!driver) {
           const created = await this.driverModel.create({
-            userId: (fullUser as any)?._id,
+            userId: new Types.ObjectId((fullUser as any)?._id),
             status: 'inactive',
           } as any);
           driver = created?.toObject?.() || (created as any);
@@ -171,10 +171,10 @@ export class AuthService {
       } else if (role === 'driver') {
         try {
           // Create and link driver profile tied to this user
-          let driver = await this.driverModel.findOne({ userId: (user as any)._id }).lean();
+          let driver = await this.driverModel.findOne({ userId: new Types.ObjectId((user as any)._id) }).lean();
           if (!driver) {
             const created = await this.driverModel.create({
-              userId: (user as any)._id,
+              userId: new Types.ObjectId((user as any)._id),
               status: 'inactive',
               ordersCompleted: 0,
               ordersRejected: 0,

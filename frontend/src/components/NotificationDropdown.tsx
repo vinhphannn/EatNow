@@ -251,7 +251,7 @@ export default function NotificationDropdown({ restaurantId }: NotificationDropd
         }}
       >
         <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-          <Typography variant="h6" component="div" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: '1.25rem', fontWeight: 600 }}>
             <FontAwesomeIcon icon={faBell} />
             Thông báo
             {unreadCount > 0 && (
@@ -262,7 +262,7 @@ export default function NotificationDropdown({ restaurantId }: NotificationDropd
                 sx={{ ml: 1 }}
               />
             )}
-          </Typography>
+          </Box>
         </Box>
 
         <List sx={{ p: 0, maxHeight: 350, overflow: 'auto' }}>

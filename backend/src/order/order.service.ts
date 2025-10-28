@@ -151,6 +151,9 @@ export class OrderService {
         items: orderData.items // Pass items from frontend
       });
 
+      // XỬ LÝ THANH TOÁN SẼ ĐƯỢC THỰC HIỆN TRONG paymentController.payOrder
+      // Không cần xử lý ở đây để tránh duplicate transactions
+
       // TÌM TÀI XẾ NGAY KHI TẠO ĐƠN
       // Vì nhiều quán không dùng app - tài xế sẽ đến đọc món mới làm
       try {
@@ -477,7 +480,7 @@ export class OrderService {
    * - Driver: nhận driverPayment (deliveryFee + tip + doorFee - commission)
    * - Platform: thu platformFeeAmount (được tính trong order schema)
    */
-  private async distributeOrderEarnings(order: any) {
+  async distributeOrderEarnings(order: any) {
     try {
       // Lấy các giá trị từ order (đã được tính sẵn khi tạo đơn)
       const subtotal = order.subtotal || 0;
@@ -514,14 +517,16 @@ export class OrderService {
         }
       });
 
-      // Release escrow của customer (nếu có)
+      // Release escrow từ platform wallet (nếu có)
       try {
-        await this.walletService.releaseEscrowForOrder('customer', (order.customerId || order.userId).toString(), order._id.toString(), order.customerPayment || order.finalTotal);
+        const customerPayment = order.customerPayment || order.finalTotal || 0;
+        console.log(`🔍 Releasing escrow from platform wallet for order ${order._id}:`, { customerPayment });
+        await this.walletService.releaseEscrowForOrder('admin', 'system', order._id.toString(), customerPayment);
       } catch (e) {
         this.logger.warn(`Release escrow failed or not applicable for order ${order._id}: ${e?.message || e}`);
       }
 
-      // Phân chia tiền vào ví
+      // Phân chia tiền vào ví - gọi trực tiếp walletService
       const distributionResults = await this.walletService.distributeOrderEarnings({
         _id: order._id,
         restaurantId: order.restaurantId,
@@ -554,33 +559,43 @@ export class OrderService {
   }
 
   async findAvailableOrders(limit = 50) {
-    // Orders available for drivers to accept: ready for pickup, no driver assigned
+    // Orders available for drivers to accept: any status except cancelled/delivered, no driver assigned
     const docs = await this.orderModel
       .find({ 
-        status: 'ready', 
+        status: { $nin: ['cancelled', 'delivered'] },
         $or: [{ driverId: null }, { driverId: { $exists: false } }]
       })
       .populate('restaurantId', 'name address coordinates')
+      .populate('customerId', 'name phone email')
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();
     return docs.map((d: any) => ({
-      id: String(d._id),
+      _id: String(d._id),
       orderCode: d.code || `#${d._id.toString().slice(-6)}`,
-      restaurantId: String(d.restaurantId),
-      restaurantName: d.restaurantId?.name || 'Nhà hàng',
-      restaurantAddress: d.restaurantId?.address || '',
-      restaurantLat: d.restaurantCoordinates?.latitude || d.restaurantId?.coordinates?.latitude,
-      restaurantLng: d.restaurantCoordinates?.longitude || d.restaurantId?.coordinates?.longitude,
-      customerName: d.deliveryAddress?.recipientName || 'Khách hàng',
-      customerAddress: d.deliveryAddress?.addressLine || '',
-      customerLat: d.deliveryAddress?.latitude,
-      customerLng: d.deliveryAddress?.longitude,
+      restaurantId: {
+        _id: String(d.restaurantId?._id || d.restaurantId),
+        name: d.restaurantId?.name || 'Nhà hàng',
+        address: d.restaurantId?.address || '',
+        phone: d.restaurantId?.phone || ''
+      },
+      customerId: {
+        _id: String(d.customerId?._id || d.customerId),
+        name: d.customerId?.name || 'Khách hàng',
+        phone: d.customerId?.phone || '',
+        email: d.customerId?.email || ''
+      },
+      deliveryAddress: d.deliveryAddress || {
+        addressLine: 'Địa chỉ không xác định',
+        recipientName: d.deliveryAddress?.recipientName || 'Khách hàng',
+        recipientPhone: d.deliveryAddress?.recipientPhone || ''
+      },
       status: d.status,
-      total: d.finalTotal || d.total || 0,
+      finalTotal: d.finalTotal || d.total || 0,
       deliveryFee: d.deliveryFee || 0,
-      tip: d.driverTip || 0,
+      driverTip: d.driverTip || 0,
       createdAt: d.createdAt,
+      specialInstructions: d.specialInstructions || ''
     }));
   }
 
@@ -604,18 +619,98 @@ export class OrderService {
 
   // Driver accepts: assign driver if order is ready and unassigned (atomic to avoid race)
   async acceptOrderByDriver(orderId: string, driverUserId: string) {
-    // Resolve driver document by userId
-    const driver = await this.driverModel.findOne({ userId: new Types.ObjectId(driverUserId) }).lean();
-    if (!driver) throw new NotFoundException('Driver not found');
+    // Resolve driver document by userId - tìm driver có ví với balance > 0
+    // Tìm cả userId là ObjectId và string
+    const drivers = await this.driverModel.find({ 
+      $or: [
+        { userId: new Types.ObjectId(driverUserId) },
+        { userId: driverUserId }
+      ]
+    }).lean();
+    if (drivers.length === 0) throw new NotFoundException('Driver not found');
+
+    // Tìm driver có ví với balance > 0
+    let driver = null;
+    for (const d of drivers) {
+      const wallet = await this.walletService.getWalletForActor('driver', d._id.toString());
+      if (wallet && wallet.balance > 0) {
+        driver = d;
+        break;
+      }
+    }
+
+    if (!driver) {
+      // Nếu không tìm thấy driver có ví với balance > 0, lấy driver đầu tiên
+      driver = drivers[0];
+    }
 
     const driverId = (driver as any)._id;
     const now = new Date();
+
+    // DEBUG: Log thông tin driver (chỉ khi cần thiết)
+    // this.logger.log(`🔍 Driver info debug:`, {
+    //   driverUserId,
+    //   driverId: driverId.toString(),
+    //   driverObjectId: driverId,
+    //   isValidObjectId: Types.ObjectId.isValid(driverId.toString()),
+    //   totalDriversFound: drivers.length,
+    //   selectedDriverIndex: drivers.findIndex(d => d._id.toString() === driverId.toString())
+    // });
+
+    // Lấy thông tin đơn hàng để kiểm tra phương thức thanh toán
+    const order = await this.orderModel.findById(orderId).lean();
+    if (!order) throw new NotFoundException('Order not found');
+
+    // XỬ LÝ THANH TOÁN BẰNG TIỀN MẶT
+    if (order.paymentMethod === 'cash') {
+      try {
+        this.logger.log(`Processing cash payment for order ${orderId}, amount: ${order.finalTotal}`);
+        
+        // Kiểm tra tài xế có đủ tiền trong ví không
+        const driverWallet = await this.walletService.getWalletForActor('driver', driverId.toString());
+        
+        // DEBUG: Log thông tin ví tài xế (chỉ khi cần thiết)
+        // this.logger.log(`🔍 Driver wallet debug:`, {
+        //   driverId: driverId.toString(),
+        //   walletId: driverWallet._id,
+        //   balance: driverWallet.balance,
+        //   pendingBalance: driverWallet.pendingBalance,
+        //   escrowBalance: driverWallet.escrowBalance,
+        //   orderAmount: order.finalTotal,
+        //   isEnough: driverWallet.balance >= order.finalTotal
+        // });
+        
+        if (driverWallet.balance < order.finalTotal) {
+          const need = order.finalTotal - driverWallet.balance;
+          this.logger.error(`❌ Insufficient driver wallet balance:`, {
+            currentBalance: driverWallet.balance,
+            requiredAmount: order.finalTotal,
+            need: need
+          });
+          throw new Error(`Số dư ví không đủ để nhận đơn hàng này. Cần nạp thêm ${need.toLocaleString('vi-VN')} VND`);
+        }
+
+        // Lấy tiền từ ví tài xế chuyển về admin
+        await this.walletService.payOrderFromWallet(
+          'driver',
+          driverId.toString(),
+          order.finalTotal,
+          orderId,
+          order.code || `#${orderId.slice(-6)}`
+        );
+        
+        this.logger.log(`✅ Cash payment processed for order ${orderId} - driver wallet debited`);
+      } catch (error) {
+        this.logger.error(`❌ Cash payment processing failed for order ${orderId}:`, error);
+        throw new Error(`Không thể nhận đơn hàng: ${error.message}`);
+      }
+    }
 
     // Update order with tracking history
     const updated = await this.orderModel.findOneAndUpdate(
       { 
         _id: new Types.ObjectId(orderId), 
-        status: 'ready',
+        status: { $nin: ['cancelled', 'delivered'] },
         $or: [{ driverId: null }, { driverId: { $exists: false } }]
       },
       { 

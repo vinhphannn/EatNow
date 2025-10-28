@@ -17,7 +17,7 @@ export enum OrderStatus {
 
 export enum PaymentMethod {
   CASH = 'cash',
-  BANK_TRANSFER = 'bank_transfer',
+  WALLET = 'wallet', // Thanh toán bằng ví EatNow
 }
 
 // Schema cho từng lựa chọn trong option

@@ -6,14 +6,44 @@ declare global {
 }
 
 interface AvailableOrder {
-  id: string;
+  _id: string;
+  id?: string; // fallback
   orderCode?: string;
-  restaurantId: string;
+  restaurantId: {
+    _id: string;
+    name: string;
+    address: string;
+    phone?: string;
+    coordinates?: {
+      latitude: number;
+      longitude: number;
+    };
+  };
+  customerId: {
+    _id: string;
+    name: string;
+    phone: string;
+    email: string;
+  };
+  deliveryAddress: {
+    addressLine: string;
+    recipientName: string;
+    recipientPhone: string;
+    latitude?: number;
+    longitude?: number;
+  };
   status: string;
-  total: number;
+  finalTotal: number;
+  total?: number; // fallback
   deliveryFee: number;
-  tip?: number;
+  driverTip?: number;
+  tip?: number; // fallback
   createdAt: string;
+  specialInstructions?: string;
+  deliveryDistance?: number;
+  estimatedDeliveryTime?: string;
+  paymentMethod?: 'cash' | 'bank_transfer';
+  // Legacy fields for backward compatibility
   restaurantName?: string;
   restaurantAddress?: string;
   customerAddress?: string;
@@ -203,8 +233,8 @@ export default function DriverLiveMap() {
     // Add new order markers
     availableOrders.forEach(order => {
       // Use restaurant location as marker position (fallback to HCMC center)
-      const lat = order.restaurantLat || 10.776889;
-      const lng = order.restaurantLng || 106.700806;
+      const lat = order.restaurantId?.coordinates?.latitude || order.restaurantLat || 10.776889;
+      const lng = order.restaurantId?.coordinates?.longitude || order.restaurantLng || 106.700806;
       
       // Create custom icon for order markers
       const orderIcon = L.divIcon({
@@ -242,13 +272,13 @@ export default function DriverLiveMap() {
       // Add popup with order info
       const createPopupContent = () => `
         <div style="min-width: 220px; padding: 4px;">
-          <div style="font-weight: bold; margin-bottom: 6px; color: #f97316;">ID: ${order.orderCode || '#' + order.id.slice(-6)}</div>
-          <div style="margin-bottom: 4px; font-size: 13px;">💰 Tổng tiền: ₫${order.total.toLocaleString('vi-VN')}</div>
-          <div style="margin-bottom: 4px; font-size: 13px;">🚚 Phí ship: ₫${order.deliveryFee.toLocaleString('vi-VN')}</div>
-          ${order.tip > 0 ? `<div style="margin-bottom: 4px; font-size: 13px;">💵 Tip: ₫${order.tip.toLocaleString('vi-VN')}</div>` : ''}
+          <div style="font-weight: bold; margin-bottom: 6px; color: #f97316;">ID: ${order.orderCode || '#' + (order._id || order.id).slice(-6)}</div>
+          <div style="margin-bottom: 4px; font-size: 13px;">💰 Tổng tiền: ₫${(order.finalTotal || order.total || 0).toLocaleString('vi-VN')}</div>
+          <div style="margin-bottom: 4px; font-size: 13px;">🚚 Phí ship: ₫${(order.deliveryFee || 0).toLocaleString('vi-VN')}</div>
+          ${(order.driverTip || order.tip || 0) > 0 ? `<div style="margin-bottom: 4px; font-size: 13px;">💵 Tip: ₫${(order.driverTip || order.tip || 0).toLocaleString('vi-VN')}</div>` : ''}
           <div style="margin-bottom: 4px; font-size: 13px;">📅 ${new Date(order.createdAt).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' })}</div>
-          ${order.restaurantName ? `<div style="margin-bottom: 6px; font-size: 13px; color: #059669;">🏪 ${order.restaurantName}</div>` : ''}
-          <button onclick="window.acceptOrder('${order.id}')" style="
+          ${order.restaurantId?.name ? `<div style="margin-bottom: 6px; font-size: 13px; color: #059669;">🏪 ${order.restaurantId.name}</div>` : ''}
+          <button onclick="window.acceptOrder('${order._id || order.id}')" style="
             background: #f97316;
             color: white;
             border: none;
@@ -334,15 +364,18 @@ export default function DriverLiveMap() {
               </button>
             </div>
             <div className="space-y-2 text-sm">
-              <div className="text-base font-bold text-orange-600">ID: {selectedOrder.orderCode || '#' + selectedOrder.id.slice(-6)}</div>
-              <div><strong>Tổng tiền:</strong> ₫{selectedOrder.total.toLocaleString('vi-VN')}</div>
-              <div><strong>Phí ship:</strong> ₫{selectedOrder.deliveryFee.toLocaleString('vi-VN')}</div>
-              {selectedOrder.tip > 0 && (
-                <div><strong>Tip:</strong> ₫{selectedOrder.tip.toLocaleString('vi-VN')}</div>
+              <div className="text-base font-bold text-orange-600">ID: {selectedOrder.orderCode || '#' + (selectedOrder._id || selectedOrder.id).slice(-6)}</div>
+              <div><strong>Tổng tiền:</strong> ₫{(selectedOrder.finalTotal || selectedOrder.total || 0).toLocaleString('vi-VN')}</div>
+              <div><strong>Phí ship:</strong> ₫{(selectedOrder.deliveryFee || 0).toLocaleString('vi-VN')}</div>
+              {(selectedOrder.driverTip || selectedOrder.tip || 0) > 0 && (
+                <div><strong>Tip:</strong> ₫{(selectedOrder.driverTip || selectedOrder.tip || 0).toLocaleString('vi-VN')}</div>
               )}
               <div><strong>Thời gian:</strong> {new Date(selectedOrder.createdAt).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' })}</div>
-              {selectedOrder.restaurantName && (
-                <div><strong>Nhà hàng:</strong> {selectedOrder.restaurantName}</div>
+              {selectedOrder.restaurantId?.name && (
+                <div><strong>Nhà hàng:</strong> {selectedOrder.restaurantId.name}</div>
+              )}
+              {selectedOrder.deliveryDistance && (
+                <div><strong>Khoảng cách:</strong> {selectedOrder.deliveryDistance.toFixed(1)} km</div>
               )}
             </div>
             <div className="flex gap-2 mt-4">
@@ -353,7 +386,7 @@ export default function DriverLiveMap() {
                 Đóng
               </button>
               <button 
-                onClick={() => acceptOrder(selectedOrder.id)}
+                onClick={() => acceptOrder(selectedOrder._id || selectedOrder.id)}
                 className="flex-1 px-3 py-2 bg-orange-600 text-white rounded hover:bg-orange-700"
               >
                 Nhận đơn

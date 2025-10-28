@@ -22,7 +22,7 @@ export class DriverAssignmentSchedulerService {
   @Cron(CronExpression.EVERY_30_SECONDS)
   async processPendingOrders() {
     try {
-      this.logger.debug('🔄 Running driver assignment scheduler...');
+      // this.logger.debug('🔄 Running driver assignment scheduler...');
       
       // Lấy đơn hàng chưa có tài xế từ DB
       const pendingOrdersInDb = await this.orderModel.find({ 
@@ -31,11 +31,11 @@ export class DriverAssignmentSchedulerService {
       }).select('_id').lean();
       
       if (pendingOrdersInDb?.length === 0) {
-        this.logger.debug('No pending orders to process');
+        // this.logger.debug('No pending orders to process');
         return;
       }
 
-      this.logger.log(`Processing ${pendingOrdersInDb.length} pending orders from DB`);
+      // this.logger.log(`Processing ${pendingOrdersInDb.length} pending orders from DB`);
       
       // Thêm vào Redis để xử lý
       for (const order of pendingOrdersInDb) {
@@ -55,7 +55,7 @@ export class DriverAssignmentSchedulerService {
   @Cron(CronExpression.EVERY_5_MINUTES)
   async cleanupExpiredOrders() {
     try {
-      this.logger.debug('🧹 Cleaning up expired orders...');
+      // this.logger.debug('🧹 Cleaning up expired orders...');
       
       const pendingOrders = await this.redisService.getPendingOrders();
       const expiredOrders = [];
@@ -69,7 +69,7 @@ export class DriverAssignmentSchedulerService {
       }
 
       if (expiredOrders.length > 0) {
-        this.logger.warn(`Found ${expiredOrders.length} expired orders`);
+        // this.logger.warn(`Found ${expiredOrders.length} expired orders`);
         
         for (const orderId of expiredOrders) {
           await this.handleExpiredOrder(orderId);

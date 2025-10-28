@@ -67,7 +67,7 @@ rules:
 
   ## 8. Workflow AI / Cursor
   - Trước khi tạo code mới, AI phải đọc `PROJECT_CONTEXT.md` và `PROJECT_RULES.md`.
-  - Khi phát hiện thay đổi cấu trúc hoặc công nghệ, tự động cập nhật file `.md`.
+  - Khi phát hiện thay đổi cấu trúc hoặc công nghệ, tự động cập nhật file `PROJECT_CONTEXT.md`.
   - Code sinh ra phải tuân thủ quy tắc này: tối giản, hiệu năng, có comment tiếng Việt.
 
 

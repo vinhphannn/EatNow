@@ -67,7 +67,7 @@ export interface OrderTotals {
 export interface OrderData {
   restaurantId: string;
   items: OrderItem[];
-  paymentMethod: 'cash' | 'bank_transfer';
+  paymentMethod: 'cash' | 'wallet';
   deliveryAddress: DeliveryAddress;
   recipient: {
     name: string;
@@ -156,7 +156,7 @@ export const calculateOrderTotals = (
 export const createOrderData = (
   restaurantId: string,
   cartItems: CartItem[],
-  paymentMethod: 'cash' | 'bank_transfer',
+  paymentMethod: 'cash' | 'wallet',
   selectedAddress: any,
   deliveryAddress: string,
   recipientName: string,
@@ -197,20 +197,22 @@ export const createOrderData = (
  * Debug cart items with options
  */
 export const debugCartItems = (cartItems: CartItem[], label: string) => {
-  console.log(`🔍 ${label}:`, cartItems.map(item => ({
+  const debugData = cartItems.map(item => ({
     name: item.item.name,
     options: item.options,
     totalPrice: item.totalPrice
-  })));
+  }));
+  console.log(`🔍 ${label}:`, JSON.stringify(debugData, null, 2));
 };
 
 /**
  * Debug order items with options
  */
 export const debugOrderItems = (orderItems: OrderItem[], label: string) => {
-  console.log(`🔍 ${label}:`, orderItems.map(item => ({
+  const debugData = orderItems.map(item => ({
     name: item.name,
     options: item.options,
     totalPrice: item.totalPrice
-  })));
+  }));
+  console.log(`🔍 ${label}:`, JSON.stringify(debugData, null, 2));
 };

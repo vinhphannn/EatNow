@@ -75,7 +75,7 @@ export default function CustomerProfilePage() {
         
         // Load wallet info
         try {
-          const wallet = await apiClient.get<any>(`/api/v1/wallet/balance`);
+          const wallet = await apiClient.get<any>(`/api/v1/customer/wallet/balance`);
           setWalletInfo({ balance: wallet.balance || 0, transactions: wallet.transactions || [] });
         } catch (e) {
           // Wallet not available
@@ -83,7 +83,7 @@ export default function CustomerProfilePage() {
         
         // Load favorite restaurants
         try {
-          const favorites = await apiClient.get<any>(`/api/v1/customer/favorites`);
+          const favorites = await apiClient.get<any>(`/api/v1/favorites`);
           setFavoriteRestaurants(favorites || []);
         } catch (e) {
           // Favorites not available

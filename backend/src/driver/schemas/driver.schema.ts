@@ -295,4 +295,7 @@ export class Driver {
 
 export const DriverSchema = SchemaFactory.createForClass(Driver);
 
+// Thêm unique index để đảm bảo một user chỉ có một driver record
+DriverSchema.index({ userId: 1 }, { unique: true });
+
 

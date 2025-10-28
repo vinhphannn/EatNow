@@ -741,6 +741,46 @@ export class OptimizedNotificationGateway implements OnGatewayConnection, OnGate
   }
 
   /**
+   * Gửi notification đơn hàng cho tài xế (để tài xế chọn nhận hoặc bỏ qua)
+   */
+  async sendOrderNotificationToDriver(driverId: string, orderData: any) {
+    try {
+      const driverRoom = `driver:${driverId}`;
+      const roomSize = this.server.sockets.adapter.rooms.get(driverRoom)?.size || 0;
+      
+      if (roomSize > 0) {
+        this.server.to(driverRoom).emit('new_order_notification', {
+          type: 'new_order_available',
+          orderId: orderData.orderId,
+          orderCode: orderData.orderCode,
+          restaurantName: orderData.restaurantName,
+          restaurantAddress: orderData.restaurantAddress,
+          deliveryAddress: orderData.deliveryAddress,
+          recipientName: orderData.recipientName,
+          finalTotal: orderData.finalTotal,
+          deliveryFee: orderData.deliveryFee,
+          driverTip: orderData.driverTip,
+          driverPayment: orderData.driverPayment,
+          deliveryDistance: orderData.deliveryDistance,
+          createdAt: orderData.createdAt,
+          specialInstructions: orderData.specialInstructions,
+          paymentMethod: orderData.paymentMethod,
+          timestamp: new Date().toISOString()
+        });
+        
+        console.log(`📱 Order notification sent to driver ${driverId} for order ${orderData.orderId}`);
+        return true;
+      } else {
+        console.log(`⚠️ Driver ${driverId} not connected, cannot send notification`);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error sending order notification to driver:', error);
+      return false;
+    }
+  }
+
+  /**
    * Gửi notification cho driver khi được giao đơn hàng
    */
   async notifyOrderAssigned(orderId: string, driverId: string) {

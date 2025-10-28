@@ -98,14 +98,8 @@ class DriverService {
     });
   }
 
-  async completeOrder(orderId: string, actualDeliveryTime?: Date, customerRating?: number, notes?: string): Promise<DriverOrderSummary> {
-    return apiClient.post<DriverOrderSummary>('/driver/orders/complete', {
-      orderId,
-      actualDeliveryTime,
-      customerRating,
-      notes
-    });
-  }
+  // Method này đã được thay thế bởi updateOrderStatus
+  // Không cần thiết nữa
 
   async getDriverHistory(page = 1, limit = 20): Promise<{
     orders: DriverOrderSummary[];
@@ -126,21 +120,10 @@ class DriverService {
     });
   }
 
-  async arrivedAtRestaurant(orderId: string) {
-    return apiClient.post(`/driver/orders/${orderId}/arrived-restaurant`);
-  }
+  // Các method này không được sử dụng - frontend sử dụng updateOrderStatus
 
-  async pickedUp(orderId: string) {
-    return apiClient.post(`/driver/orders/${orderId}/picked-up`);
-  }
-
-  async arrivedAtCustomer(orderId: string) {
-    return apiClient.post(`/driver/orders/${orderId}/arrived-customer`);
-  }
-
-  async delivered(orderId: string) {
-    return apiClient.post(`/driver/orders/${orderId}/delivered`);
-  }
+  // Method này đã được thay thế bởi updateOrderStatus
+  // Không cần thiết nữa
 
   async getEarningsSummary(): Promise<DriverEarningsSummary> {
     return apiClient.get<DriverEarningsSummary>('/drivers/me/earnings/summary');

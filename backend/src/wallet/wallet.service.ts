@@ -284,11 +284,11 @@ export class WalletService {
   }
 
   /**
-   * Thanh toán đơn hàng bằng số dư ví của actor (customer/restaurant/driver/admin)
-   * Escrow flow:
-   * - ✅ Hold: trừ balance, tăng escrowBalance, tạo transaction status='escrowed'
-   * - ✅ Release: khi delivered, đổi status → 'completed', giảm escrowBalance
-   * - ✅ Refund: khi cancel, chuyển escrow về balance
+   * Thanh toán đơn hàng bằng số dư ví của customer
+   * Escrow flow mới:
+   * - ✅ Hold: trừ balance của customer, tăng escrowBalance của platform
+   * - ✅ Release: khi delivered, chia tiền từ escrow platform cho restaurant + driver + platform fee
+   * - ✅ Refund: khi cancel, chuyển escrow về balance của customer
    */
   async payOrderFromWallet(
     ownerType: 'customer' | 'restaurant' | 'driver' | 'admin',
@@ -345,10 +345,18 @@ export class WalletService {
           { session }
         );
 
-        // 5. Atomic update: Trừ balance và tăng escrowBalance
+        // 5. Atomic update: Trừ balance của customer và tăng escrowBalance của platform
         await this.walletModel.findByIdAndUpdate(
           wallet._id,
-          { $inc: { balance: -amount, escrowBalance: amount } },
+          { $inc: { balance: -amount } },
+          { session }
+        );
+
+        // Tăng escrowBalance của platform wallet
+        const platformWallet = await this.getWalletForActor('admin', 'system');
+        await this.walletModel.findByIdAndUpdate(
+          platformWallet._id,
+          { $inc: { escrowBalance: amount } },
           { session }
         );
 
@@ -412,7 +420,7 @@ export class WalletService {
         // Cập nhật transaction thành completed
         await this.walletTransactionModel.updateOne({ _id: tx._id }, { $set: { status: 'completed' } }, { session });
 
-        // Giảm escrowBalance
+        // Giảm escrowBalance (tx.amount là âm, nên cần dùng Math.abs để có giá trị dương)
         await this.walletModel.updateOne({ _id: wallet._id }, { $inc: { escrowBalance: -Math.abs(tx.amount) } }, { session });
 
         this.logger.log(`✅ Escrow released for order ${orderId}`);
@@ -501,15 +509,39 @@ export class WalletService {
     let query: any = { ownerType, isActive: true };
 
     // Tìm theo actor type
-    if (ownerType === 'customer' || ownerType === 'admin') {
+    if (ownerType === 'customer') {
       query.userId = new Types.ObjectId(actorId);
     } else if (ownerType === 'restaurant') {
       query.restaurantId = new Types.ObjectId(actorId);
     } else if (ownerType === 'driver') {
       query.driverId = new Types.ObjectId(actorId);
+    } else if (ownerType === 'admin') {
+      if (actorId === 'system') {
+        // System wallet (platform wallet)
+        query.isSystemWallet = true;
+      } else {
+        query.userId = new Types.ObjectId(actorId);
+      }
     }
 
+    // DEBUG: Log query để tìm ví
+    this.logger.log(`🔍 getWalletForActor debug:`, {
+      ownerType,
+      actorId,
+      query,
+      isValidObjectId: Types.ObjectId.isValid(actorId)
+    });
+
     let wallet = await this.walletModel.findOne(query);
+    
+    // DEBUG: Log kết quả tìm ví
+    this.logger.log(`🔍 Wallet found:`, {
+      found: !!wallet,
+      walletId: wallet?._id,
+      balance: wallet?.balance,
+      pendingBalance: wallet?.pendingBalance,
+      escrowBalance: wallet?.escrowBalance
+    });
 
     if (!wallet) {
       // Tạo wallet nếu chưa có (bắt duplicate key để đảm bảo only-one-wallet-per-user)
@@ -523,12 +555,18 @@ export class WalletService {
         isActive: true,
       };
 
-      if (ownerType === 'customer' || ownerType === 'admin') {
+      if (ownerType === 'customer') {
         walletData.userId = new Types.ObjectId(actorId);
       } else if (ownerType === 'restaurant') {
         walletData.restaurantId = new Types.ObjectId(actorId);
       } else if (ownerType === 'driver') {
         walletData.driverId = new Types.ObjectId(actorId);
+      } else if (ownerType === 'admin') {
+        if (actorId === 'system') {
+          walletData.isSystemWallet = true;
+        } else {
+          walletData.userId = new Types.ObjectId(actorId);
+        }
       }
 
       try {
@@ -779,6 +817,13 @@ export class WalletService {
    * Khi đơn hàng hoàn thành → chia tiền cho nhà hàng, tài xế, platform
    */
   async distributeOrderEarnings(order: any) {
+    console.log(`🔍 distributeOrderEarnings called with:`, {
+      orderId: order._id,
+      restaurantRevenue: order.restaurantRevenue,
+      driverPayment: order.driverPayment,
+      platformFeeAmount: order.platformFeeAmount
+    });
+    
     const results = [];
 
     // 1. Credit vào ví nhà hàng
@@ -829,23 +874,33 @@ export class WalletService {
       results.push({ type: 'driver_commission', transactionId: commissionTransaction._id });
     }
 
-    // 3. Credit vào ví platform (platform fee)
-    if (order.platformFeeAmount > 0) {
-      // Lấy system wallet
-      let systemWallet = await this.walletModel.findOne({ isSystemWallet: true });
-      if (!systemWallet) {
-        systemWallet = await this.walletModel.create({
-          isSystemWallet: true,
-          ownerType: 'admin',
-          balance: 0,
-          pendingBalance: 0,
-          escrowBalance: 0, // ✅ Thêm escrowBalance
-          totalDeposits: 0,
-          totalWithdrawals: 0,
-          isActive: true,
-        });
-      }
+    // 3. Chuyển tiền từ escrow platform sang balance và chia cho các bên
+    const totalOrderAmount = order.restaurantRevenue + order.driverPayment + order.platformFeeAmount;
+    console.log(`💰 Processing order settlement: ${totalOrderAmount} VND from platform escrow`);
+    
+    // Lấy system wallet
+    const systemWallet = await this.getWalletForActor('admin', 'system');
+    console.log(`📊 System wallet before settlement:`, {
+      _id: systemWallet._id,
+      balance: systemWallet.balance,
+      escrowBalance: systemWallet.escrowBalance
+    });
 
+    // Kiểm tra escrow đủ không
+    if (systemWallet.escrowBalance < totalOrderAmount) {
+      throw new Error(`Insufficient escrow balance: ${systemWallet.escrowBalance} < ${totalOrderAmount}`);
+    }
+
+    // Chuyển tiền từ escrow sang balance
+    await this.walletModel.findByIdAndUpdate(systemWallet._id, {
+      $inc: { 
+        escrowBalance: -totalOrderAmount,
+        balance: order.platformFeeAmount  // Chỉ giữ lại platform fee
+      }
+    });
+
+    // Tạo transaction cho platform fee
+    if (order.platformFeeAmount > 0) {
       const platformTransaction = await this.walletTransactionModel.create({
         walletId: systemWallet._id,
         isSystemTransaction: true,
@@ -858,12 +913,16 @@ export class WalletService {
         metadata: { orderId: order._id },
       });
 
-      await this.walletModel.findByIdAndUpdate(systemWallet._id, {
-        $inc: { balance: order.platformFeeAmount }
-      });
-
       results.push({ type: 'platform_fee', transactionId: platformTransaction._id });
     }
+
+    // Verify update
+    const updatedWallet = await this.walletModel.findById(systemWallet._id);
+    console.log(`✅ System wallet after settlement:`, {
+      balance: updatedWallet?.balance,
+      escrowBalance: updatedWallet?.escrowBalance,
+      platformFeeKept: order.platformFeeAmount
+    });
 
     return results;
   }

@@ -16,10 +16,13 @@ import { DriverLocationController } from './controllers/driver-location.controll
 import { DriverOrderController } from './controllers/driver-order.controller';
 import { DriverOrderAssignmentController } from './controllers/driver-order-assignment.controller';
 import { DriverTestController } from './controllers/driver-test.controller';
+import { DriverWalletController } from './controllers/driver-wallet.controller';
 import { OrderAssignmentModule } from '../order/order-assignment.module';
 import { OrderModule } from '../order/order.module';
 import { OptimizedNotificationModule } from '../notification/optimized-notification.module';
 import { CommonModule } from '../common/common.module';
+import { WalletModule } from '../wallet/wallet.module';
+import { PaymentModule } from '../payment/payment.module';
 import { DriverAutoSimService } from './services/driver-auto-sim.service';
 
 @Module({
@@ -33,8 +36,10 @@ import { DriverAutoSimService } from './services/driver-auto-sim.service';
     OrderAssignmentModule,
     OptimizedNotificationModule,
     CommonModule,
+    WalletModule,
+    PaymentModule,
   ],
-  controllers: [DriverController, DriverLocationController, DriverOrderController, DriverOrderAssignmentController, DriverTestController],
+  controllers: [DriverController, DriverLocationController, DriverOrderController, DriverOrderAssignmentController, DriverTestController, DriverWalletController],
   providers: [
     DriverService, 
     DriverLocationService, 

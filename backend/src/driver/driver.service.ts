@@ -101,7 +101,14 @@ export class DriverService {
   }
 
   async getCurrentOrders(userId: string) {
-    const driver = await this.driverModel.findOne({ userId: new Types.ObjectId(userId) }).lean();
+    // Tìm driver với userId có thể là ObjectId hoặc string
+    let driver = await this.driverModel.findOne({ userId: new Types.ObjectId(userId) }).lean();
+    
+    if (!driver) {
+      // Thử tìm với userId là string
+      driver = await this.driverModel.findOne({ userId: userId }).lean();
+    }
+    
     if (!driver) throw new NotFoundException('Driver not found');
 
     console.log('🔍 Loading current orders for driver:', driver._id);

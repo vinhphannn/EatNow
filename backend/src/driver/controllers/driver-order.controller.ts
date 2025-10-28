@@ -62,10 +62,10 @@ export class DriverOrderController {
       }
       
       const order = await this.driverOrderService.getOrderById(orderId);
-      console.log('Order found:', !!order);
-      console.log('Order driverId:', order?.driverId);
-      console.log('Driver _id:', driver._id);
-      console.log('Driver comparison:', order?.driverId?.toString(), '===', String(driver._id));
+      // console.log('Order found:', !!order);
+      // console.log('Order driverId:', order?.driverId);
+      // console.log('Driver _id:', driver._id);
+      // console.log('Driver comparison:', order?.driverId?.toString(), '===', String(driver._id));
       
       if (!order || order.driverId?.toString() !== String(driver._id)) {
         return { success: false, message: 'Order not found or not assigned to you' };
@@ -243,52 +243,10 @@ export class DriverOrderController {
     }
   }
 
-  @Post(':orderId/delivered')
-  async deliveredOrder(
-    @Request() req: any,
-    @Param('orderId') orderId: string
-  ) {
-    try {
-      const driverId = req.user.id;
-      
-      // Complete order delivery
-      await this.orderAssignmentService.completeOrderDelivery(driverId, orderId);
+  // Endpoint này đã được thay thế bởi /driver/orders/assignment/update-status
+  // Không cần thiết nữa vì frontend sử dụng updateOrderStatus
 
-      this.logger.log(`Driver ${driverId} completed delivery for order ${orderId}`);
-
-      return {
-        success: true,
-        message: 'Order delivered successfully'
-      };
-    } catch (error) {
-      this.logger.error('Failed to complete order delivery:', error);
-      return {
-        success: false,
-        message: 'Failed to complete delivery'
-      };
-    }
-  }
-
-  @Post(':orderId/status')
-  async updateOrderStatus(
-    @Request() req: any,
-    @Param('orderId') orderId: string,
-    @Body() body: { status: OrderStatus }
-  ) {
-    try {
-      const driverId = req.user.id;
-      const order = await this.driverOrderService.getOrderById(orderId);
-      if (!order || order.driverId?.toString() !== driverId) {
-        return { success: false, message: 'Order not found or not assigned to you' };
-      }
-
-      const updated = await this.driverOrderService.updateOrderStatus(orderId, body.status, driverId);
-      return { success: true, order: updated };
-    } catch (error) {
-      this.logger.error('Failed to update order status:', error);
-      return { success: false, message: 'Failed to update status' };
-    }
-  }
+  // Endpoint này không được sử dụng - frontend sử dụng /driver/orders/assignment/update-status
 
   /**
    * Driver cập nhật vị trí
@@ -435,18 +393,14 @@ export class DriverOrderController {
         };
       }
 
-      // Kiểm tra tài xế có đang giao hàng không
-      if (driver.deliveryStatus === 'delivering' || driver.currentOrderId) {
-        return {
-          success: false,
-          message: 'Cannot check out while delivering an order'
-        };
-      }
+      // Bỏ validation check out khi đang giao hàng - cho phép check out bất cứ lúc nào
 
-      // Cập nhật trạng thái checkout
+      // Cập nhật trạng thái checkout và reset delivery status
       await this.driverModel.findByIdAndUpdate(driver._id, {
         status: 'checkout',
-        lastCheckoutAt: new Date()
+        lastCheckoutAt: new Date(),
+        deliveryStatus: null,
+        currentOrderId: null
       });
 
       this.logger.log(`Driver ${driverId} checked out`);
@@ -474,11 +428,11 @@ export class DriverOrderController {
   async getStatus(@Request() req) {
     try {
       const driverId = req.user.id;
-      this.logger.log(`Getting status for driver userId: ${driverId}`);
+      // this.logger.log(`Getting status for driver userId: ${driverId}`);
 
       // Tìm driver theo userId
       const driver = await this.driverModel.findOne({ userId: driverId });
-      this.logger.log(`Driver found: ${!!driver}, status: ${driver?.status}`);
+      // this.logger.log(`Driver found: ${!!driver}, status: ${driver?.status}`);
       
       if (!driver) {
         this.logger.warn(`Driver not found for userId: ${driverId}, creating new driver profile`);
@@ -507,7 +461,7 @@ export class DriverOrderController {
           walletBalance: 0
         });
 
-        this.logger.log(`Created new driver profile: ${newDriver._id}`);
+        // this.logger.log(`Created new driver profile: ${newDriver._id}`);
         
         return {
           success: true,

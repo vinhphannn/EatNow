@@ -24,6 +24,8 @@ export default function WalletPage() {
   const [forceUpdate, setForceUpdate] = useState(0); // Force re-render
   const [isPolling, setIsPolling] = useState(false);
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
+  const [hasWallet, setHasWallet] = useState<boolean | null>(null); // null = chưa check, true/false = đã check
+  const [creatingWallet, setCreatingWallet] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -52,6 +54,10 @@ export default function WalletPage() {
       console.log('💰 Balance data received:', balanceData);
       console.log('📝 Transactions data received:', transactionsData);
       
+      // Check if wallet exists (isActive exists and is not null)
+      const walletExists = balanceData !== null && balanceData.isActive !== false;
+      setHasWallet(walletExists);
+      
       // Update state
       setBalance(balanceData);
       setTransactions(transactionsData);
@@ -59,9 +65,29 @@ export default function WalletPage() {
       console.log('✅ Wallet data loaded successfully');
     } catch (error: any) {
       console.error('❌ Error loading wallet data:', error);
-      alert(error.message);
+      // If error, assume no wallet
+      setHasWallet(false);
+      console.log('⚠️ No wallet found or error occurred');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreateWallet = async () => {
+    try {
+      setCreatingWallet(true);
+      console.log('🔧 Creating wallet...');
+      
+      // Call API to create wallet (backend will auto-create if not exists)
+      await walletService.getBalance(); // This will trigger wallet creation
+      
+      console.log('✅ Wallet created successfully');
+      await loadData(); // Reload to verify
+    } catch (error: any) {
+      console.error('❌ Error creating wallet:', error);
+      alert('Không thể tạo ví: ' + error.message);
+    } finally {
+      setCreatingWallet(false);
     }
   };
 
@@ -327,6 +353,59 @@ export default function WalletPage() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  // Show create wallet UI if no wallet exists
+  if (hasWallet === false) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-8">
+        <div className="max-w-2xl mx-auto px-4">
+          <div className="bg-white rounded-lg shadow-md p-8 text-center">
+            <div className="mb-6">
+              <div className="mx-auto w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center mb-4">
+                <span className="text-4xl">💼</span>
+              </div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">Chưa có ví</h2>
+              <p className="text-gray-600">
+                Bạn chưa có ví trong hệ thống. Tạo ví ngay để có thể nạp tiền và thanh toán đơn hàng.
+              </p>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 text-left">
+              <h3 className="font-semibold text-blue-800 mb-2">💰 Chức năng ví cho phép bạn:</h3>
+              <ul className="text-sm text-blue-700 space-y-1">
+                <li>✅ Nạp tiền nhanh chóng qua MoMo</li>
+                <li>✅ Thanh toán đơn hàng nhanh chóng</li>
+                <li>✅ Theo dõi lịch sử giao dịch</li>
+                <li>✅ Rút tiền ra tài khoản ngân hàng</li>
+              </ul>
+            </div>
+
+            <button
+              onClick={handleCreateWallet}
+              disabled={creatingWallet}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-lg transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              {creatingWallet ? (
+                <>
+                  <span className="inline-block animate-spin mr-2">⟳</span>
+                  Đang tạo ví...
+                </>
+              ) : (
+                <>
+                  <span className="mr-2">🎉</span>
+                  Tạo ví ngay
+                </>
+              )}
+            </button>
+
+            <p className="text-xs text-gray-500 mt-4">
+              Ví sẽ được tạo tự động và hoàn toàn miễn phí
+            </p>
+          </div>
+        </div>
       </div>
     );
   }

@@ -395,22 +395,32 @@ export class OrderCreationService {
 
 
   /**
-   * Generate order code
+   * Generate order code - lấy code cao nhất trong DB rồi cộng 1
    */
   private async generateOrderCode(): Promise<string> {
-    // Get the latest order to generate sequential number
-    const latestOrder = await this.orderModel.findOne({}, {}, { sort: { createdAt: -1 } });
-    let orderNumber = 1;
-    
-    if (latestOrder && latestOrder.code) {
-      // Extract number from existing code (e.g., "ORD0001" -> 1)
-      const match = latestOrder.code.match(/ORD(\d+)$/);
-      if (match) {
-        orderNumber = parseInt(match[1]) + 1;
+    try {
+      // Lấy đơn hàng có code lớn nhất (theo số thứ tự)
+      const latestOrder = await this.orderModel.findOne(
+        { code: { $regex: /^ORD\d+$/ } }, 
+        {}, 
+        { sort: { code: -1 } }
+      );
+      
+      let orderNumber = 1;
+      
+      if (latestOrder && latestOrder.code) {
+        // Extract number from existing code (e.g., "ORD0001" -> 1)
+        const match = latestOrder.code.match(/ORD(\d+)$/);
+        if (match) {
+          orderNumber = parseInt(match[1]) + 1;
+        }
       }
+      
+      // Format as ORD + 4 digits (e.g., ORD0001, ORD0002, ...)
+      return `ORD${orderNumber.toString().padStart(4, '0')}`;
+    } catch (error) {
+      // Fallback to timestamp-based code
+      return `ORD${Date.now().toString().slice(-6)}`;
     }
-    
-    // Format as ORD + 4 digits (e.g., ORD0001, ORD0002, ...)
-    return `ORD${orderNumber.toString().padStart(4, '0')}`;
   }
 }

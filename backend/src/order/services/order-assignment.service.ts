@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, forwardRef, Inject } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Order, OrderDocument } from '../schemas/order.schema';
@@ -6,6 +6,7 @@ import { Driver, DriverDocument } from '../../driver/schemas/driver.schema';
 import { Restaurant, RestaurantDocument } from '../../restaurant/schemas/restaurant.schema';
 import { DriverPerformanceService } from '../../driver/services/driver-performance.service';
 import { DistanceService } from '../../common/services/distance.service';
+import { OrderService } from '../order.service';
 
 @Injectable()
 export class OrderAssignmentService {
@@ -17,6 +18,8 @@ export class OrderAssignmentService {
     @InjectModel(Restaurant.name) private restaurantModel: Model<RestaurantDocument>,
     private driverPerformanceService: DriverPerformanceService,
     private distanceService: DistanceService,
+    @Inject(forwardRef(() => OrderService))
+    private orderService: OrderService,
   ) {}
 
   /**
@@ -207,16 +210,19 @@ export class OrderAssignmentService {
       });
 
       // Update order status
-      await this.orderModel.findByIdAndUpdate(orderId, {
+      const updatedOrder = await this.orderModel.findByIdAndUpdate(orderId, {
         status: 'delivered',
         actualDeliveryTime: new Date()
-      });
+      }, { new: true });
 
       // Mark driver as available
       await this.driverModel.findByIdAndUpdate(driverId, {
         isAvailable: true,
         $unset: { currentOrderId: 1 }
       });
+
+      // ✅ PHÂN CHIA TIỀN SẼ ĐƯỢC XỬ LÝ TRONG orderService.updateOrderStatus
+      // Không cần gọi distributeOrderEarnings ở đây để tránh trùng lặp
 
       this.logger.log(`Driver ${driverId} completed order ${orderId} in ${deliveryTime} minutes`);
     } catch (error) {

@@ -178,67 +178,8 @@ export class DriverOrderAssignmentController {
     }
   }
 
-  /**
-   * Driver hoàn thành đơn hàng
-   * POST /api/v1/driver/orders/complete
-   */
-  @Post('complete')
-  async completeOrder(@Body() completeOrderDto: CompleteOrderDto, @Request() req) {
-    const driverId = req.user.id;
-    const { orderId, actualDeliveryTime, customerRating, notes } = completeOrderDto;
-
-    try {
-      // 1. Kiểm tra driver
-      const driver = await this.driverService.getDriverByUserId(driverId);
-      if (!driver) {
-        throw new HttpException('Driver not found', HttpStatus.NOT_FOUND);
-      }
-
-      // 2. Kiểm tra đơn hàng
-      const order = await this.orderService.getOrderById(orderId);
-      if (!order) {
-        throw new HttpException('Order not found', HttpStatus.NOT_FOUND);
-      }
-
-      if (order.driverId?.toString() !== driver._id.toString()) {
-        throw new HttpException('Order is not assigned to this driver', HttpStatus.BAD_REQUEST);
-      }
-
-      // 3. Cập nhật đơn hàng
-      const updatedOrder = await this.orderService.updateOrderStatus(orderId, {
-        status: 'delivered',
-        actualDeliveryTime: actualDeliveryTime || new Date(),
-        driverRating: customerRating,
-        driverNotes: notes
-      });
-
-      // 4. Cập nhật driver status
-      await this.driverService.updateDriverStatus(driver._id.toString(), {
-        status: 'available',
-        currentOrderId: null,
-        currentOrderStartedAt: null,
-        activeOrdersCount: Math.max((driver.activeOrdersCount || 1) - 1, 0)
-      });
-
-      // 5. Cập nhật driver presence trong Redis
-      await this.driverPresenceService.markDriverAvailable(driver._id.toString(), { latitude: 0, longitude: 0 });
-
-      // 6. Gửi notification cho customer và restaurant
-      await this.notificationGateway.notifyOrderDelivered(orderId, driver._id.toString());
-
-      return {
-        success: true,
-        message: 'Order completed successfully',
-        order: updatedOrder
-      };
-
-    } catch (error) {
-      throw new HttpException(
-        error.message || 'Failed to complete order',
-        error.status || HttpStatus.INTERNAL_SERVER_ERROR
-      );
-    }
-  }
+  // Endpoint này đã được thay thế bởi update-status
+  // Không cần thiết nữa vì frontend sử dụng updateOrderStatus
 
   /**
    * Driver cập nhật vị trí

@@ -24,7 +24,7 @@ export function toObjectIdString(id: any): string {
  * Resolve ActorRef từ request theo ownerType mong muốn.
  * - customer/admin: actorId = req.user.id
  * - restaurant: actorId = req.user.restaurantId (nếu có) hoặc sẽ để trống để controller tự map
- * - driver: actorId = req.user.driverId (nếu có)
+ * - driver: actorId = req.user.id (userId, sẽ được map sang driverId trong controller)
  */
 export function resolveActorRefFromReq(req: any, ownerType: ActorType): ActorRef {
   const userId = req?.user?.id ? String(req.user.id) : undefined;
@@ -35,7 +35,8 @@ export function resolveActorRefFromReq(req: any, ownerType: ActorType): ActorRef
   } else if (ownerType === 'restaurant') {
     actorId = req?.user?.restaurantId ? String(req.user.restaurantId) : undefined;
   } else if (ownerType === 'driver') {
-    actorId = req?.user?.driverId ? String(req.user.driverId) : undefined;
+    // Driver dùng userId, controller sẽ map sang driverId
+    actorId = userId;
   }
 
   return { ownerType, actorId: actorId || '', userId };

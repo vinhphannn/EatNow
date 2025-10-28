@@ -47,7 +47,7 @@ interface Order {
   id: string;
   items: CartItem[];
   total: number;
-  paymentMethod: 'cash' | 'bank_transfer';
+  paymentMethod: 'cash' | 'wallet';
   status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
   createdAt: string;
 }
@@ -63,7 +63,7 @@ export default function CheckoutPage() {
 
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank_transfer' | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'wallet' | null>(null);
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [recipientName, setRecipientName] = useState('');
   const [recipientPhone, setRecipientPhone] = useState('');
@@ -73,10 +73,9 @@ export default function CheckoutPage() {
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [customerId, setCustomerId] = useState<string>('');
   const [selectedAddress, setSelectedAddress] = useState<any>(null);
-  const [summary, setSummary] = useState<{ subtotal: number; deliveryFee: number; tip: number; doorFee: number; total: number } | null>(null);
+  const [summary, setSummary] = useState<{ subtotal: number; deliveryFee: number; driverTip: number; doorFee: number; total: number } | null>(null);
   const [deliveryMode, setDeliveryMode] = useState<'immediate' | 'scheduled'>('immediate');
   const [scheduledAt, setScheduledAt] = useState<string>('');
-  const [tip, setTip] = useState<number>(0);
   const [doorFee, setDoorFee] = useState<boolean>(false);
   const [driverTip, setDriverTip] = useState<number>(0);
   const [customTip, setCustomTip] = useState<string>('');
@@ -166,7 +165,7 @@ export default function CheckoutPage() {
 
       // Calculate summary from cart data
       const subtotal = Number(cart?.totalAmount || 0);
-      setSummary({ subtotal, deliveryFee: 0, tip: 0, doorFee: 0, total: subtotal });
+      setSummary({ subtotal, deliveryFee: 0, driverTip: 0, doorFee: 0, total: subtotal });
 
       // Load restaurant info and coordinates for distance calculation
       try {
@@ -214,7 +213,7 @@ export default function CheckoutPage() {
           setSummary(prev => prev ? {
             ...prev,
             deliveryFee: calculateDeliveryFeeUtil(result.distance),
-            total: prev.subtotal + calculateDeliveryFeeUtil(result.distance) + prev.tip + (prev.doorFee ? 5000 : 0)
+            total: prev.subtotal + calculateDeliveryFeeUtil(result.distance) + (driverTip || 0) + (doorFee ? 5000 : 0)
           } : null);
         }
         
@@ -280,10 +279,9 @@ export default function CheckoutPage() {
   const calculateFinalTotal = () => {
     const subtotal = calculateTotal();
     const delivery = distanceCalculated ? deliveryFee : calculateDeliveryFeeUtil(0);
-    const tipAmount = tip || 0;
     const doorAmount = doorFee ? 5000 : 0;
-    const driverTipAmount = driverTip || 0;
-    return subtotal + delivery + tipAmount + doorAmount + driverTipAmount;
+    const driverTipAmount = driverTip || 0; // driverTip is the actual tip for driver
+    return subtotal + delivery + doorAmount + driverTipAmount;
   };
 
   // Recompute delivery fee when address or restaurant coords or subtotal change
@@ -294,19 +292,19 @@ export default function CheckoutPage() {
     const addrLng = selectedAddress?.longitude;
     if (typeof addrLat !== 'number' || typeof addrLng !== 'number') {
       // No coordinates → keep fee at 0; submission will block
-      setSummary(prev => prev ? { ...prev, deliveryFee: 0, total: prev.subtotal + (tip || 0) + (doorFee ? 5000 : 0) } : prev);
+      setSummary(prev => prev ? { ...prev, deliveryFee: 0, total: prev.subtotal + (driverTip || 0) + (doorFee ? 5000 : 0) } : prev);
       return;
     }
     if (!restaurantCoords) {
-      setSummary(prev => prev ? { ...prev, deliveryFee: 0, total: prev.subtotal + (tip || 0) + (doorFee ? 5000 : 0) } : prev);
+      setSummary(prev => prev ? { ...prev, deliveryFee: 0, total: prev.subtotal + (driverTip || 0) + (doorFee ? 5000 : 0) } : prev);
       return;
     }
     const km = calculateDistanceKm(Number(addrLat), Number(addrLng), restaurantCoords.lat, restaurantCoords.lng);
     const fee = calculateDeliveryFeeUtil(km);
-    setSummary(prev => prev ? { ...prev, deliveryFee: fee, total: prev.subtotal + fee + (tip || 0) + (doorFee ? 5000 : 0) } : prev);
-  }, [selectedAddress, restaurantCoords, cartItems, tip, doorFee]);
+    setSummary(prev => prev ? { ...prev, deliveryFee: fee, total: prev.subtotal + fee + (driverTip || 0) + (doorFee ? 5000 : 0) } : prev);
+  }, [selectedAddress, restaurantCoords, cartItems, driverTip, doorFee]);
 
-  const handlePaymentMethodSelect = (method: 'cash' | 'bank_transfer') => {
+  const handlePaymentMethodSelect = (method: 'cash' | 'wallet') => {
     setPaymentMethod(method);
   };
 
@@ -350,7 +348,7 @@ export default function CheckoutPage() {
     specialInstructions,
     deliveryMode,
     scheduledAt,
-    tip,
+    tip: driverTip, // Map driverTip to tip for compatibility
     doorFee,
     driverTip,
     voucherCode,
@@ -470,7 +468,7 @@ export default function CheckoutPage() {
                       </div>
                       
                       {group.items.map((item, index) => (
-                        <div key={`${item.id}-${index}-${JSON.stringify(item.options || [])}`} className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg ml-4">
+                        <div key={`${item.id}-${index}`} className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg ml-4">
                           {/* Số thứ tự bên trái */}
                           <ItemNumber number={index + 1} />
                           
@@ -783,12 +781,12 @@ export default function CheckoutPage() {
 
                   <button
                     onClick={() => {
-                      handlePaymentMethodSelect('bank_transfer');
+                      handlePaymentMethodSelect('wallet');
                       // Thử thanh toán ngay bằng ví nếu đủ số dư
                       setTimeout(payWithWallet, 0);
                     }}
                     className={`w-full p-4 rounded-lg border-2 transition-colors ${
-                      paymentMethod === 'bank_transfer'
+                      paymentMethod === 'wallet'
                         ? 'border-orange-500 bg-orange-50'
                         : 'border-gray-200 hover:border-gray-300'
                     }`}
@@ -812,8 +810,8 @@ export default function CheckoutPage() {
                       if (!summary) { showToast('Thiếu tổng tiền', 'error'); return; }
                       if (!paymentMethod) { showToast('Chọn phương thức thanh toán', 'error'); return; }
 
-                      // Nếu chọn Ví EatNow (bank_transfer) → kiểm tra số dư rồi mới tạo đơn + trừ ví
-                      if (paymentMethod === 'bank_transfer') {
+                      // Nếu chọn Ví EatNow (wallet) → kiểm tra số dư rồi mới tạo đơn + trừ ví
+                      if (paymentMethod === 'wallet') {
                         const total = summary.total;
                         const balanceResp = await apiClient.get('/api/v1/customer/wallet/balance') as { balance: number };
                         if (!balanceResp || typeof balanceResp.balance !== 'number') {
@@ -834,13 +832,20 @@ export default function CheckoutPage() {
                         return;
                       }
 
-                      if (paymentMethod === 'bank_transfer') {
+                      if (paymentMethod === 'wallet') {
                         // Gọi thanh toán bằng ví
+                        const totalAmount = calculateFinalTotal(); // Dùng công thức tính lại
+                        console.log('🔍 Payment amount check:', {
+                          summaryTotal: summary.total,
+                          calculatedTotal: totalAmount,
+                          difference: Math.abs(summary.total - totalAmount)
+                        });
+                        
                         const payResp = await apiClient.post('/api/v1/payment/order', {
                           method: 'wallet',
                           orderId: order._id,
                           orderCode: order.code,
-                          amount: summary.total,
+                          amount: totalAmount, // Dùng giá trị tính lại
                           restaurantId
                         }) as { success?: boolean; needDeposit?: boolean; message?: string };
 
@@ -1003,7 +1008,7 @@ export default function CheckoutPage() {
                           )}
                         </div>
                         <div className="text-orange-500">
-                          {selectedAddressId === address._id && '✓'}
+                          {selectedAddressId === String(address._id) && '✓'}
                         </div>
                       </div>
                     </div>

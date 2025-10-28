@@ -23,7 +23,15 @@ interface Order {
   subtotal: number;
   deliveryFee: number;
   finalTotal: number;
-  deliveryAddress: string;
+  deliveryAddress: {
+    label: string;
+    addressLine: string;
+    latitude: number;
+    longitude: number;
+    note?: string;
+    recipientName: string;
+    recipientPhone: string;
+  };
   specialInstructions: string;
   paymentMethod: 'cash' | 'bank_transfer';
   status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
@@ -293,7 +301,18 @@ export default function OrderDetailPage() {
                 <div className="space-y-3">
                   <div>
                     <h3 className="font-medium text-gray-900">Địa chỉ giao hàng</h3>
-                    <p className="text-gray-600">{order.deliveryAddress}</p>
+                    <p className="text-gray-600">{order.deliveryAddress.addressLine}</p>
+                    {order.deliveryAddress.label && (
+                      <p className="text-sm text-gray-500">🏷️ {order.deliveryAddress.label}</p>
+                    )}
+                    {order.deliveryAddress.note && (
+                      <p className="text-sm text-gray-500">📝 {order.deliveryAddress.note}</p>
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="font-medium text-gray-900">Người nhận</h3>
+                    <p className="text-gray-600">{order.deliveryAddress.recipientName}</p>
+                    <p className="text-sm text-gray-500">📞 {order.deliveryAddress.recipientPhone}</p>
                   </div>
                   {order.specialInstructions && (
                     <div>

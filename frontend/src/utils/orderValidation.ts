@@ -8,7 +8,7 @@ export interface OrderValidationResult {
 }
 
 export interface OrderFormData {
-  paymentMethod: 'cash' | 'bank_transfer' | null;
+  paymentMethod: 'cash' | 'wallet' | null;
   restaurantId: string;
   recipientName: string;
   recipientPhone: string;
@@ -22,11 +22,11 @@ export interface OrderFormData {
 /**
  * Validate payment method
  */
-export const validatePaymentMethod = (paymentMethod: 'cash' | 'bank_transfer' | null): OrderValidationResult => {
+export const validatePaymentMethod = (paymentMethod: 'cash' | 'wallet' | null): OrderValidationResult => {
   if (!paymentMethod) {
     return { isValid: false, errorMessage: 'Vui lòng chọn phương thức thanh toán' };
   }
-  // Cho phép 'bank_transfer' (được dùng làm Ví EatNow)
+  // Cho phép 'wallet' (Ví EatNow)
   return { isValid: true };
 };
 

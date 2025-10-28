@@ -13,7 +13,7 @@ import { handleOrderError, handleOrderSuccess } from '@/utils/orderErrorHandling
 export interface UseOrderPlacementProps {
   restaurantId: string;
   cartItems: any[];
-  paymentMethod: 'cash' | 'bank_transfer' | null;
+  paymentMethod: 'cash' | 'wallet' | null;
   selectedAddress: any;
   deliveryAddress: string;
   recipientName: string;
@@ -81,18 +81,18 @@ export const useOrderPlacement = (props: UseOrderPlacementProps & { autoNavigate
       // Debug order items
       debugOrderItems(orderData.items, 'Items payload with options');
       
-      // Debug order data
-      console.log('🔍 Frontend order data:', {
+      // Debug order data (remove object rendering)
+      console.log('🔍 Frontend order data:', JSON.stringify({
         recipientName: orderData.recipient?.name,
         recipientPhone: orderData.recipient?.phone,
-        selectedAddress: props.selectedAddress,
+        selectedAddress: props.selectedAddress?.addressLine || props.selectedAddress?.label || 'N/A',
         recipientNameFromProps: props.recipientName,
         recipientPhoneFromProps: props.recipientPhone,
         driverTip: orderData.tip,
         doorFee: orderData.doorFee,
         voucherCode: orderData.voucherCode,
-        orderData: orderData
-      });
+        itemsCount: orderData.items?.length || 0
+      }));
 
       // Submit order
       const order = await apiClient.post('/api/v1/orders', orderData);

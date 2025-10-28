@@ -68,6 +68,8 @@ export default function RestaurantWalletPage() {
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [processing, setProcessing] = useState(false);
+  const [hasWallet, setHasWallet] = useState<boolean | null>(null);
+  const [creatingWallet, setCreatingWallet] = useState(false);
 
   useEffect(() => {
     loadWalletData();
@@ -85,6 +87,10 @@ export default function RestaurantWalletPage() {
       if (balanceResponse.ok) {
         const balanceData = await balanceResponse.json();
         setBalance(balanceData);
+        
+        // Check if wallet exists based on isActive field
+        const walletExists = balanceData !== null && balanceData.isActive !== false;
+        setHasWallet(walletExists);
       }
 
       // Load transactions
@@ -98,9 +104,34 @@ export default function RestaurantWalletPage() {
       }
     } catch (error) {
       console.error('Error loading wallet data:', error);
+      // If error, assume no wallet
+      setHasWallet(false);
       showToast('Có lỗi xảy ra khi tải dữ liệu ví', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+  
+  const handleCreateWallet = async () => {
+    try {
+      setCreatingWallet(true);
+      
+      // Call API to create wallet (backend will auto-create if not exists)
+      const response = await fetch(`${api}/api/v1/restaurants/mine/wallet/balance`, {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        showToast('Tạo ví thành công!', 'success');
+        await loadWalletData(); // Reload to verify
+      } else {
+        showToast('Không thể tạo ví', 'error');
+      }
+    } catch (error) {
+      console.error('Error creating wallet:', error);
+      showToast('Có lỗi xảy ra khi tạo ví', 'error');
+    } finally {
+      setCreatingWallet(false);
     }
   };
 
@@ -217,6 +248,39 @@ export default function RestaurantWalletPage() {
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto"></div>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>Đang tải dữ liệu ví...</Typography>
       </Stack>
+    );
+  }
+
+  // Show create wallet UI if no wallet exists
+  if (hasWallet === false) {
+    return (
+      <div>
+        <Typography variant="h4" component="h1" sx={{ mb: 3 }}>Ví điện tử</Typography>
+        
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Stack alignItems="center" spacing={3} sx={{ py: 6 }}>
+              <WalletIcon width={64} className="text-gray-400" />
+              <Typography variant="h6" color="text.secondary" textAlign="center">
+                Bạn chưa có ví
+              </Typography>
+              <Typography variant="body2" color="text.secondary" textAlign="center">
+                Tạo ví ngay để sử dụng các tính năng thanh toán
+              </Typography>
+              <Button
+                variant="contained"
+                size="large"
+                onClick={handleCreateWallet}
+                disabled={creatingWallet}
+                startIcon={<WalletIcon width={20} />}
+                sx={{ mt: 2 }}
+              >
+                {creatingWallet ? 'Đang tạo...' : 'Tạo ví'}
+              </Button>
+            </Stack>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 

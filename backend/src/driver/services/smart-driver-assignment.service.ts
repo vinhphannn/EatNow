@@ -31,7 +31,7 @@ export class SmartDriverAssignmentService {
    */
   async findBestDriverForOrder(orderId: string): Promise<string | null> {
     try {
-      this.logger.log(`🔍 Finding best driver for order: ${orderId}`);
+      // this.logger.log(`🔍 Finding best driver for order: ${orderId}`);
 
       // Validate input
       if (!orderId || typeof orderId !== 'string') {
@@ -56,7 +56,7 @@ export class SmartDriverAssignmentService {
 
       // CHỈ TÌM TÀI XẾ CHO ĐƠN CHƯA CÓ TÀI XẾ
       if (order.driverId) {
-        this.logger.log(`Order ${orderId} already has driver: ${order.driverId}`);
+        // this.logger.log(`Order ${orderId} already has driver: ${order.driverId}`);
         // Xóa khỏi pending orders
         await this.redisService.removePendingOrder(orderId);
         return null;
@@ -72,7 +72,7 @@ export class SmartDriverAssignmentService {
       // Lấy tất cả tài xế available
       const availableDrivers = await this.getAvailableDrivers();
       if (availableDrivers.length === 0) {
-        this.logger.warn('No available drivers found');
+        // this.logger.warn('No available drivers found');
         return null;
       }
 
@@ -87,7 +87,7 @@ export class SmartDriverAssignmentService {
       }
 
       if (candidates.length === 0) {
-        this.logger.warn('No suitable drivers found');
+        // this.logger.warn('No suitable drivers found');
         return null;
       }
 
@@ -95,7 +95,7 @@ export class SmartDriverAssignmentService {
       candidates.sort((a, b) => this.calculateScore(b) - this.calculateScore(a));
 
       const bestDriver = candidates[0];
-      this.logger.log(`Best driver found: ${bestDriver.driverId} with score: ${this.calculateScore(bestDriver)}`);
+      // this.logger.log(`Best driver found: ${bestDriver.driverId} with score: ${this.calculateScore(bestDriver)}`);
 
       return bestDriver.driverId;
 
@@ -264,7 +264,54 @@ export class SmartDriverAssignmentService {
   }
 
   /**
+   * Gửi notification đơn hàng cho tài xế (thay vì gán trực tiếp)
+   */
+  async sendOrderNotificationToDriver(orderId: string, driverId: string): Promise<boolean> {
+    try {
+      // Lấy thông tin đơn hàng
+      const order = await this.orderModel.findById(orderId).populate('restaurantId', 'name address').lean();
+      if (!order) {
+        this.logger.error(`Order not found: ${orderId}`);
+        return false;
+      }
+
+      // Lấy thông tin tài xế
+      const driver = await this.driverModel.findById(driverId).lean();
+      if (!driver) {
+        this.logger.error(`Driver not found: ${driverId}`);
+        return false;
+      }
+
+      // Gửi notification qua Socket.IO
+      this.notificationGateway.sendOrderNotificationToDriver(driverId, {
+        orderId: order._id.toString(),
+        orderCode: order.code || `#${order._id.toString().slice(-6)}`,
+        restaurantName: (order.restaurantId as any)?.name || 'Nhà hàng',
+        restaurantAddress: (order.restaurantId as any)?.address || '',
+        deliveryAddress: order.deliveryAddress?.addressLine || '',
+        recipientName: order.deliveryAddress?.recipientName || 'Khách hàng',
+        finalTotal: order.finalTotal || 0,
+        deliveryFee: order.deliveryFee || 0,
+        driverTip: order.tip || 0, // Sử dụng tip thay vì driverTip
+        driverPayment: order.driverPayment || 0,
+        deliveryDistance: order.deliveryDistance || 0,
+        createdAt: (order as any).createdAt?.toISOString() || new Date().toISOString(),
+        specialInstructions: order.specialInstructions || '',
+        paymentMethod: order.paymentMethod || 'cash'
+      });
+
+      this.logger.log(`Order notification sent to driver ${driverId} for order ${orderId}`);
+      return true;
+
+    } catch (error) {
+      this.logger.error('Error sending order notification to driver:', error);
+      return false;
+    }
+  }
+
+  /**
    * Gán đơn hàng cho tài xế (atomic operation để tránh race condition)
+   * Chỉ được gọi khi tài xế chấp nhận đơn hàng
    */
   async assignOrderToDriver(orderId: string, driverId: string): Promise<boolean> {
     try {
@@ -353,9 +400,12 @@ export class SmartDriverAssignmentService {
         const bestDriver = await this.findBestDriverForOrder(orderId);
         
         if (bestDriver) {
-          const success = await this.assignOrderToDriver(orderId, bestDriver);
+          // Thay vì gán trực tiếp, gửi notification cho tài xế
+          const success = await this.sendOrderNotificationToDriver(orderId, bestDriver);
           if (success) {
-            this.logger.log(`Order ${orderId} assigned to driver ${bestDriver}`);
+            this.logger.log(`Order ${orderId} notification sent to driver ${bestDriver}`);
+            // Xóa khỏi pending orders để tránh gửi lại
+            await this.redisService.removePendingOrder(orderId);
           }
         } else {
           this.logger.warn(`No suitable driver found for order ${orderId}`);
