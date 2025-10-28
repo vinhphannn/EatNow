@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Customer, CustomerDocument } from './schemas/customer.schema';
+import { WalletService } from '../wallet/wallet.service';
 import { UserService } from '../user/user.service';
 
 @Injectable()
@@ -9,6 +10,7 @@ export class CustomerService {
   constructor(
     @InjectModel(Customer.name) private customerModel: Model<CustomerDocument>,
     private readonly users: UserService,
+    private readonly walletService: WalletService,
   ) {}
 
   // Create customer profile
@@ -32,7 +34,17 @@ export class CustomerService {
         ...customerData,
       });
 
-      return await customer.save();
+      const saved = await customer.save();
+
+      // Auto-create wallet cho customer (ownerType='customer')
+      try {
+        await this.walletService.getWalletForActor('customer', userId);
+      } catch (e) {
+        // không throw để không cản trở tạo customer; log nhẹ nếu cần
+        console.warn('⚠️ Auto-create customer wallet failed:', (e as any)?.message);
+      }
+
+      return saved;
     } catch (error) {
       throw error;
     }

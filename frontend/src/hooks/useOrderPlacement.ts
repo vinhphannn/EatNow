@@ -29,7 +29,7 @@ export interface UseOrderPlacementProps {
   restaurantCoords: any;
 }
 
-export const useOrderPlacement = (props: UseOrderPlacementProps) => {
+export const useOrderPlacement = (props: UseOrderPlacementProps & { autoNavigate?: boolean }) => {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { showToast } = useToast();
@@ -97,8 +97,12 @@ export const useOrderPlacement = (props: UseOrderPlacementProps) => {
       // Submit order
       const order = await apiClient.post('/api/v1/orders', orderData);
 
-      // Handle success
-      handleOrderSuccess(order, showToast, router);
+      if (props.autoNavigate !== false) {
+        // Handle success (mặc định tự điều hướng)
+        handleOrderSuccess(order, showToast, router);
+      }
+
+      return order;
 
     } catch (error) {
       // Handle error

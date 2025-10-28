@@ -308,9 +308,6 @@ export default function CheckoutPage() {
 
   const handlePaymentMethodSelect = (method: 'cash' | 'bank_transfer') => {
     setPaymentMethod(method);
-    if (method === 'bank_transfer') {
-      showToast('Chức năng chuyển khoản đang được phát triển', 'info');
-    }
   };
 
   const handleAddressSelect = (addressId: string) => {
@@ -358,8 +355,34 @@ export default function CheckoutPage() {
     driverTip,
     voucherCode,
     deliveryFee: distanceCalculated ? deliveryFee : calculateDeliveryFeeUtil(0),
-    restaurantCoords
+    restaurantCoords,
+    autoNavigate: false
   });
+
+  const payWithWallet = async () => {
+    if (!summary) return;
+    try {
+      // Kiểm tra số dư ví
+      const balanceResp = await apiClient.get('/api/v1/customer/wallet/balance') as { balance: number };
+      const total = summary.total;
+      if (!balanceResp || typeof balanceResp.balance !== 'number') {
+        showToast('Không lấy được số dư ví', 'error');
+        return;
+      }
+      if (balanceResp.balance < total) {
+        showToast('Số dư không đủ. Vui lòng nạp thêm.', 'info');
+        // Điều hướng sang trang ví để nạp
+        router.push('/customer/wallet');
+        return;
+      }
+
+      // Không tạo đơn ở bước chọn phương thức
+      showToast('Ví đủ số dư. Nhấn "Đặt đơn" để thanh toán.', 'success');
+    } catch (e: any) {
+      console.error('payWithWallet error:', e);
+      showToast(e?.message || 'Lỗi thanh toán ví', 'error');
+    }
+  };
 
   if (loading) {
     return (
@@ -759,7 +782,11 @@ export default function CheckoutPage() {
                   </button>
 
                   <button
-                    onClick={() => handlePaymentMethodSelect('bank_transfer')}
+                    onClick={() => {
+                      handlePaymentMethodSelect('bank_transfer');
+                      // Thử thanh toán ngay bằng ví nếu đủ số dư
+                      setTimeout(payWithWallet, 0);
+                    }}
                     className={`w-full p-4 rounded-lg border-2 transition-colors ${
                       paymentMethod === 'bank_transfer'
                         ? 'border-orange-500 bg-orange-50'
@@ -767,10 +794,10 @@ export default function CheckoutPage() {
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className="text-2xl">🏦</div>
+                      <div className="text-2xl">👛</div>
                       <div className="text-left">
-                        <p className="font-medium text-gray-900">Chuyển khoản</p>
-                        <p className="text-sm text-gray-600">Chức năng đang phát triển</p>
+                        <p className="font-medium text-gray-900">Ví EatNow</p>
+                        <p className="text-sm text-gray-600">Trừ trực tiếp từ ví nếu đủ số dư</p>
                       </div>
                     </div>
                   </button>
@@ -780,8 +807,66 @@ export default function CheckoutPage() {
               {/* Place Order Button */}
               <div className="pb-24">
                 <button
-                  onClick={placeOrder}
-                  disabled={orderLoading || !paymentMethod || paymentMethod === 'bank_transfer'}
+                  onClick={async () => {
+                    try {
+                      if (!summary) { showToast('Thiếu tổng tiền', 'error'); return; }
+                      if (!paymentMethod) { showToast('Chọn phương thức thanh toán', 'error'); return; }
+
+                      // Nếu chọn Ví EatNow (bank_transfer) → kiểm tra số dư rồi mới tạo đơn + trừ ví
+                      if (paymentMethod === 'bank_transfer') {
+                        const total = summary.total;
+                        const balanceResp = await apiClient.get('/api/v1/customer/wallet/balance') as { balance: number };
+                        if (!balanceResp || typeof balanceResp.balance !== 'number') {
+                          showToast('Không lấy được số dư ví', 'error');
+                          return;
+                        }
+                        if (balanceResp.balance < total) {
+                          showToast('Số dư không đủ. Vui lòng nạp thêm.', 'info');
+                          router.push('/customer/wallet');
+                          return;
+                        }
+                      }
+
+                      // Tạo đơn (không auto navigate)
+                      const order: any = await placeOrder();
+                      if (!order || !order._id) {
+                        showToast('Tạo đơn thất bại', 'error');
+                        return;
+                      }
+
+                      if (paymentMethod === 'bank_transfer') {
+                        // Gọi thanh toán bằng ví
+                        const payResp = await apiClient.post('/api/v1/payment/order', {
+                          method: 'wallet',
+                          orderId: order._id,
+                          orderCode: order.code,
+                          amount: summary.total,
+                          restaurantId
+                        }) as { success?: boolean; needDeposit?: boolean; message?: string };
+
+                        if (payResp?.success) {
+                          showToast('Thanh toán bằng ví thành công', 'success');
+                          router.push(`/customer/orders/${order._id}`);
+                          return;
+                        }
+                        if (payResp?.needDeposit) {
+                          showToast('Số dư không đủ. Vui lòng nạp thêm.', 'info');
+                          router.push('/customer/wallet');
+                          return;
+                        }
+
+                        showToast(payResp?.message || 'Thanh toán ví thất bại', 'error');
+                        return;
+                      }
+
+                      // Tiền mặt: điều hướng như flow mặc định
+                      router.push(`/customer/orders/${order._id}`);
+                    } catch (err: any) {
+                      console.error('Place order error:', err);
+                      showToast(err?.message || 'Lỗi đặt hàng', 'error');
+                    }
+                  }}
+                  disabled={orderLoading || !paymentMethod}
                   className="w-full bg-orange-500 hover:bg-orange-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white py-4 rounded-lg font-semibold text-lg transition-all duration-300 hover:scale-105"
                 >
                   {orderLoading ? (

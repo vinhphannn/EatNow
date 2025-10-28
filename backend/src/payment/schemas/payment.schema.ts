@@ -61,7 +61,7 @@ export class Payment {
   @Prop()
   referenceCode?: string; // Our reference code
 
-  @Prop()
+  @Prop({ type: Object })
   gatewayResponse?: Record<string, any>; // Raw response from payment gateway
 
   @Prop()
@@ -85,10 +85,10 @@ export class Payment {
   @Prop()
   description?: string;
 
-  @Prop()
+  @Prop({ type: Object })
   metadata?: Record<string, any>; // Additional data
 
-  @Prop()
+  @Prop({ type: Object })
   webhookData?: Record<string, any>; // Webhook payload from provider
 
   @Prop()

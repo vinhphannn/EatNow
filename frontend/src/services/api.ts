@@ -81,13 +81,13 @@ class ApiService {
 
   // Order APIs (no caching for sensitive data)
   async getOrder(id: string, token: string): Promise<any> {
-    return this.fetchWithCache(`/orders/${id}`, {
+    return this.fetchWithCache(`/api/v1/orders/${id}`, {
       headers: { Authorization: `Bearer ${token}` }
     }, 0); // No caching
   }
 
   async getOrders(token: string): Promise<any[]> {
-    return this.fetchWithCache('/orders', {
+    return this.fetchWithCache('/api/v1/orders', {
       headers: { Authorization: `Bearer ${token}` }
     }, 0); // No caching
   }

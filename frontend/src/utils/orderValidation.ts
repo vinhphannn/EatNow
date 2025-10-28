@@ -26,11 +26,7 @@ export const validatePaymentMethod = (paymentMethod: 'cash' | 'bank_transfer' | 
   if (!paymentMethod) {
     return { isValid: false, errorMessage: 'Vui lòng chọn phương thức thanh toán' };
   }
-  
-  if (paymentMethod === 'bank_transfer') {
-    return { isValid: false, errorMessage: 'Chức năng chuyển khoản đang được phát triển' };
-  }
-  
+  // Cho phép 'bank_transfer' (được dùng làm Ví EatNow)
   return { isValid: true };
 };
 

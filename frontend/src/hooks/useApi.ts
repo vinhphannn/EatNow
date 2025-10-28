@@ -79,11 +79,16 @@ export function useCart(token: string | null) {
 
 export function useOrder(id: string, token: string | null) {
   return useApi(() => {
-    if (!token) throw new Error('No token provided');
     if (!id || id.trim() === '') throw new Error('No order ID provided');
+    // Cookie-based auth path
+    if (token === 'cookie-auth') {
+      return apiClient.get(`/api/v1/orders/${id}`);
+    }
+    // Bearer token path (fallback)
+    if (!token) throw new Error('No token provided');
     return apiService.getOrder(id, token);
   }, [id, token], {
-    immediate: !!token && !!id && id.trim() !== '',
+    immediate: !!id && id.trim() !== '',
     onError: (error) => console.error('Failed to fetch order:', error)
   });
 }

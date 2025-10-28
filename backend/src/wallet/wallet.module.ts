@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { WalletController } from './wallet.controller';
+import { CustomerWalletController } from './customer-wallet.controller';
 import { WalletService } from './wallet.service';
 import { Wallet, WalletSchema } from './schemas/wallet.schema';
 import { WalletTransaction, WalletTransactionSchema } from './schemas/wallet-transaction.schema';
@@ -14,7 +15,7 @@ import { Restaurant, RestaurantSchema } from '../restaurant/schemas/restaurant.s
       { name: Restaurant.name, schema: RestaurantSchema },
     ]),
   ],
-  controllers: [WalletController],
+  controllers: [WalletController, CustomerWalletController], // Add CustomerWalletController
   providers: [WalletService],
   exports: [WalletService],
 })

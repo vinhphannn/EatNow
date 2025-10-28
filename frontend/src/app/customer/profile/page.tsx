@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { apiClient } from "@/services/api.client";
 import { useToast } from "@/components";
 import { useCustomerAuth } from "@/contexts/AuthContext";
@@ -520,6 +521,22 @@ export default function CustomerProfilePage() {
           <FontAwesomeIcon icon={faSignOutAlt} className="w-4 h-4" />
           <span>Đăng xuất</span>
         </button>
+      </div>
+
+      {/* Wallet Quick Action */}
+      <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl p-4 mb-6 text-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm opacity-90">Ví của tôi</p>
+            <p className="text-2xl font-bold">{walletInfo.balance.toLocaleString('vi-VN')} VND</p>
+          </div>
+          <Link
+            href="/customer/wallet"
+            className="bg-white text-blue-600 px-4 py-2 rounded-lg font-semibold hover:bg-blue-50 transition"
+          >
+            Xem chi tiết →
+          </Link>
+        </div>
       </div>
 
       {/* Tab Navigation */}

@@ -5,6 +5,7 @@ import { CustomerService } from './customer.service';
 import { Customer, CustomerSchema } from './schemas/customer.schema';
 import { UserModule } from '../user/user.module';
 import { RestaurantModule } from '../restaurant/restaurant.module';
+import { WalletModule } from '../wallet/wallet.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { RestaurantModule } from '../restaurant/restaurant.module';
     ]),
     UserModule,
     forwardRef(() => RestaurantModule),
+    WalletModule,
   ],
   controllers: [CustomerController],
   providers: [CustomerService],

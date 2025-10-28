@@ -28,8 +28,8 @@ export default function NotificationBell({ className = "" }: NotificationBellPro
 
   const loadUnreadCount = async () => {
     try {
-      const count = await notificationService.getUnreadCount();
-      setUnreadCount(count);
+      const response = await notificationService.getUnreadCount();
+      setUnreadCount(response.unreadCount);
     } catch (error) {
       // Silently ignore auth errors - user might not be logged in
       if (error instanceof Error && error.message.includes('Unauthorized')) {

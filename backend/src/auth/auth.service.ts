@@ -7,6 +7,7 @@ import { UserService } from '../user/user.service';
 import { Customer, CustomerDocument } from '../customer/schemas/customer.schema';
 import { Restaurant, RestaurantDocument } from '../restaurant/schemas/restaurant.schema';
 import { Driver, DriverDocument } from '../driver/schemas/driver.schema';
+import { WalletService } from '../wallet/wallet.service';
 import * as bcrypt from 'bcryptjs';
 import { Request } from 'express';
 import { randomBytes, createHmac, timingSafeEqual } from 'crypto';
@@ -22,6 +23,7 @@ export class AuthService {
     @InjectModel(Restaurant.name) private readonly restaurantModel: Model<RestaurantDocument>,
     @InjectModel(Driver.name) private readonly driverModel: Model<DriverDocument>,
     @InjectModel(RefreshToken.name) private readonly refreshModel: Model<RefreshTokenDocument>,
+    private readonly walletService: WalletService,
   ) {}
 
   // Helper function to get cookie names based on role
@@ -132,6 +134,15 @@ export class AuthService {
 
           await customer.save();
           console.log('✅ Customer profile created:', customer._id);
+
+          // Auto-create wallet cho customer
+          try {
+            await this.walletService.getWalletForActor('customer', (user as any)._id.toString());
+            console.log('✅ Customer wallet created automatically');
+          } catch (walletError) {
+            console.error('⚠️ Failed to auto-create wallet:', walletError);
+            // Không throw để không cản trở đăng ký
+          }
 
           // Update user to reference customer profile
           await this.users.setById((user as any)._id, { customerProfile: (customer as any)._id });

@@ -17,6 +17,7 @@ import {
   Avatar
 } from '@mui/material';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { NotificationActor, Notification as NotificationType } from '@/services/notification.service';
 import {
   faBell,
   faBellSlash,
@@ -39,7 +40,7 @@ interface NotificationDropdownProps {
 
 export default function NotificationDropdown({ restaurantId }: NotificationDropdownProps) {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<NotificationType[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const router = useRouter();
   
@@ -75,8 +76,10 @@ export default function NotificationDropdown({ restaurantId }: NotificationDropd
       console.log('🔔 New notification received:', payload);
       
       // Convert socket payload to Notification format
-      const notification: Notification = {
+      const notification: NotificationType = {
         _id: payload.notificationId || Date.now().toString(),
+        targetActor: NotificationActor.RESTAURANT,
+        targetUserId: restaurantId || '',
         restaurantId: restaurantId || '',
         orderId: payload.orderId,
         type: payload.type || 'new_order',

@@ -14,6 +14,7 @@ import { OrderAssignmentService } from './services/order-assignment.service';
 import { CustomerService } from '../customer/customer.service';
 import { OrderCreationService } from './services/order-creation.service';
 import { SmartDriverAssignmentService } from '../driver/services/smart-driver-assignment.service';
+import { WalletService } from '../wallet/wallet.service';
 
 @Injectable()
 export class OrderService {
@@ -31,6 +32,7 @@ export class OrderService {
     private readonly orderCreationService: OrderCreationService,
     private readonly redisService: RedisService,
     private readonly smartDriverAssignmentService: SmartDriverAssignmentService,
+    private readonly walletService: WalletService, // Thêm WalletService
   ) {}
 
   private readonly logger = new Logger(OrderService.name);
@@ -314,6 +316,46 @@ export class OrderService {
       throw new NotFoundException('Order not found');
     }
 
+    // Ẩn platform fee khỏi response cho user/nhà hàng
+    // Platform fee chỉ hiển thị cho Admin
+    const orderResponse = this.hidePlatformFee(order as any);
+    
+    return orderResponse;
+  }
+
+  /**
+   * Ẩn platform fee khỏi response cho user/nhà hàng
+   * Chỉ Admin mới thấy platformFeeAmount và platformFeeRate
+   */
+  private hidePlatformFee(order: any): any {
+    // Hoàn toàn xóa platform fee info khỏi response cho user/restaurant
+    const cleanedOrder = { ...order };
+    delete cleanedOrder.platformFeeAmount;
+    delete cleanedOrder.platformFeeRate;
+    delete cleanedOrder.driverCommissionRate;
+    return cleanedOrder;
+  }
+
+  /**
+   * Lấy order với đầy đủ thông tin platform fee (chỉ dùng cho Admin)
+   */
+  async getOrderByIdWithPlatformFee(orderId: string) {
+    if (!orderId || orderId === 'undefined') {
+      throw new NotFoundException('Order ID is required');
+    }
+
+    const order = await this.orderModel
+      .findById(orderId)
+      .populate('customerId', 'name phone email')
+      .populate('restaurantId', 'name address phone')
+      .populate('driverId', 'name phone')
+      .lean();
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    // Trả về đầy đủ thông tin, không ẩn platform fee
     return order;
   }
 
@@ -380,7 +422,96 @@ export class OrderService {
       }
     }
 
+    // PHÂN CHIA TIỀN KHI ĐƠN ĐÃ GIAO THÀNH CÔNG
+    if (updateData.status === 'delivered') {
+      try {
+        this.logger.log(`Order ${orderId} delivered - distributing earnings`);
+        await this.distributeOrderEarnings(updatedOrder);
+        this.logger.log(`Order ${orderId} earnings distributed successfully`);
+      } catch (error) {
+        this.logger.error(`Failed to distribute earnings for order ${orderId}:`, error);
+        // Không throw error để không block việc update order status
+      }
+    }
+
     return updatedOrder;
+  }
+
+  /**
+   * Phân chia tiền khi đơn hàng delivered
+   * 
+   * Lưu ý quan trọng:
+   * - Không hiển thị platformFee cho user/nhà hàng
+   * - Chỉ hiển thị số tiền họ nhận được hoặc phải trả
+   * - Platform fee chỉ hiện ở Admin dashboard
+   * 
+   * Phân chia:
+   * - Restaurant: nhận restaurantRevenue (subtotal - platformFee) 
+   * - Driver: nhận driverPayment (deliveryFee + tip + doorFee - commission)
+   * - Platform: thu platformFeeAmount (được tính trong order schema)
+   */
+  private async distributeOrderEarnings(order: any) {
+    try {
+      // Lấy các giá trị từ order (đã được tính sẵn khi tạo đơn)
+      const subtotal = order.subtotal || 0;
+      const deliveryFee = order.deliveryFee || 0;
+      const tip = order.driverTip || order.tip || 0;
+      const doorFee = order.doorFee || 0;
+      
+      // Platform fee rate và amount (từ order schema)
+      const platformFeeRate = order.platformFeeRate || 10; // Default 10%
+      const platformFeeAmount = order.platformFeeAmount || Math.floor(subtotal * platformFeeRate / 100);
+      
+      // Driver commission rate
+      const driverCommissionRate = order.driverCommissionRate || 30; // Default 30%
+      const driverCommissionAmount = Math.floor((deliveryFee + doorFee) * driverCommissionRate / 100);
+      
+      // Tính toán tiền phân chia
+      // Restaurant: subtotal - platformFee
+      const restaurantRevenue = subtotal - platformFeeAmount;
+      
+      // Driver: deliveryFee + tip + doorFee - driverCommission
+      const driverPayment = (deliveryFee + tip + doorFee) - driverCommissionAmount;
+
+      this.logger.log(`💰 Distributing earnings for order ${order._id}:`);
+      this.logger.log(`   - Restaurant revenue: ${restaurantRevenue.toLocaleString('vi-VN')} VND`);
+      this.logger.log(`   - Driver payment: ${driverPayment.toLocaleString('vi-VN')} VND`);
+      this.logger.log(`   - Platform fee: ${platformFeeAmount.toLocaleString('vi-VN')} VND (hidden from users)`);
+
+      // Cập nhật order với thông tin earnings
+      await this.orderModel.findByIdAndUpdate(order._id, {
+        $set: {
+          restaurantRevenue,
+          driverPayment,
+          platformFeeAmount, // Lưu nhưng không hiển thị cho user/restaurant
+        }
+      });
+
+      // Release escrow của customer (nếu có)
+      try {
+        await this.walletService.releaseEscrowForOrder('customer', (order.customerId || order.userId).toString(), order._id.toString(), order.customerPayment || order.finalTotal);
+      } catch (e) {
+        this.logger.warn(`Release escrow failed or not applicable for order ${order._id}: ${e?.message || e}`);
+      }
+
+      // Phân chia tiền vào ví
+      const distributionResults = await this.walletService.distributeOrderEarnings({
+        _id: order._id,
+        restaurantId: order.restaurantId,
+        driverId: order.driverId,
+        code: order.code,
+        restaurantRevenue,
+        driverPayment,
+        platformFeeAmount,
+      });
+
+      this.logger.log(`✅ Earnings distributed for order ${order._id}:`, distributionResults);
+      return distributionResults;
+
+    } catch (error) {
+      this.logger.error(`Error distributing earnings for order ${order._id}:`, error);
+      throw error;
+    }
   }
 
   private getStatusNote(status: string): string {
