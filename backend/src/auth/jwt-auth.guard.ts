@@ -15,19 +15,32 @@ export class JwtAuthGuard implements CanActivate {
     if (auth && auth.startsWith('Bearer ')) {
       token = auth.substring(7);
     } else {
-      // Fallback to HttpOnly cookies - check role-specific cookies only
+      // Fallback to HttpOnly cookies - prefer role indicator cookie if present
       const cookies = req.cookies || {};
-      
-      // Priority order: admin > driver > restaurant > customer
-      // This ensures the most privileged role is used when multiple cookies exist
-      const roles = ['admin', 'driver', 'restaurant', 'customer'];
-      
-      for (const role of roles) {
-        const cookieName = `${role}_access_token`;
-        if (cookies[cookieName]) {
-          token = cookies[cookieName];
-          console.log(`🔒 JwtAuthGuard: Using ${role}_access_token`);
-          break;
+
+      const indicatorOrder = ['admin', 'driver', 'restaurant', 'customer'];
+      let indicatedRole: string | undefined;
+      for (const role of indicatorOrder) {
+        if (cookies[`${role}_token`]) { indicatedRole = role; break; }
+      }
+
+      if (indicatedRole) {
+        const name = `${indicatedRole}_access_token`;
+        if (cookies[name]) {
+          token = cookies[name];
+          console.log(`🔒 JwtAuthGuard: Using ${indicatedRole}_access_token (by indicator)`);
+        }
+      }
+
+      // Fallback by privilege order if no indicator or missing cookie
+      if (!token) {
+        for (const role of indicatorOrder) {
+          const cookieName = `${role}_access_token`;
+          if (cookies[cookieName]) {
+            token = cookies[cookieName];
+            console.log(`🔒 JwtAuthGuard: Using ${role}_access_token`);
+            break;
+          }
         }
       }
     }

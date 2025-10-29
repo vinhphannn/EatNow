@@ -27,6 +27,15 @@ export class AuthController {
   async login(@Body() body: LoginRequestDto, @Res({ passthrough: true }) res: Response) {
     const result = await this.auth.login(body.email, body.password);
     const cookieNames = this.getCookieNames(result.user.role);
+    // Clear other actor cookies to avoid mixed-role sessions
+    const roles = ['customer', 'restaurant', 'driver', 'admin'];
+    roles.forEach((role) => {
+      if (role === result.user.role.toLowerCase()) return;
+      res.clearCookie(`${role}_access_token`, { path: '/' });
+      res.clearCookie(`${role}_refresh_token`, { path: '/auth' });
+      res.clearCookie(`${role}_csrf_token`, { path: '/auth' });
+      res.clearCookie(`${role}_token`, { path: '/' });
+    });
     
     // Set role-specific access token cookie
     res.cookie(cookieNames.accessToken, result.access_token, {
@@ -36,14 +45,7 @@ export class AuthController {
       maxAge: 60 * 60 * 1000,
       path: '/',
     });
-    // Set generic access_token for backward compatibility (guards/middleware đọc cookie này)
-    res.cookie('access_token', result.access_token, {
-      httpOnly: true,
-      sameSite: 'none',
-      secure: true,
-      maxAge: 60 * 60 * 1000,
-      path: '/',
-    });
+    // Do not set generic access_token to respect per-actor cookie design
     
     // Set role indicator cookie
     const roleCookie = `${result.user.role}_token`.toLowerCase();
@@ -75,13 +77,7 @@ export class AuthController {
       maxAge: 15 * 60 * 1000,
       path: '/',
     });
-    res.cookie('access_token', result.access_token, {
-      httpOnly: true,
-      sameSite: 'none',
-      secure: true,
-      maxAge: 15 * 60 * 1000,
-      path: '/',
-    });
+    // Do not set generic access_token
     res.cookie(cookieNames.refreshToken, result.refresh_token, {
       httpOnly: true,
       sameSite: 'none',
@@ -125,6 +121,15 @@ export class AuthController {
   async register(@Body() body: RegisterDto, @Res({ passthrough: true }) res: Response) {
     const result = await this.auth.register(body.email, body.password, body.name, body.phone as any, body.role);
     const cookieNames = this.getCookieNames(result.user.role);
+    // Clear other actor cookies to avoid mixed-role sessions
+    const rolesReg = ['customer', 'restaurant', 'driver', 'admin'];
+    rolesReg.forEach((role) => {
+      if (role === result.user.role.toLowerCase()) return;
+      res.clearCookie(`${role}_access_token`, { path: '/' });
+      res.clearCookie(`${role}_refresh_token`, { path: '/auth' });
+      res.clearCookie(`${role}_csrf_token`, { path: '/auth' });
+      res.clearCookie(`${role}_token`, { path: '/' });
+    });
     
     // Set role-specific access token cookie
     res.cookie(cookieNames.accessToken, result.access_token, {
