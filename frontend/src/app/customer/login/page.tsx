@@ -33,13 +33,19 @@ export default function CustomerLoginPage() {
       });
 
       if (response.ok) {
-        // Cookie-based session: cookies are automatically set by backend
-        const data = await response.json().catch(() => null);
-        
-        // Redirect to home page after successful login
-        console.log('🔍 Login: Redirecting to /customer/home');
-        showToast('Đăng nhập thành công', 'success');
-        window.location.href = '/customer/home';
+        // Chờ cookie được set, xác thực lại bằng /auth/me rồi chuyển trang
+        try {
+          const me = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/v1/auth/me`, {
+            credentials: 'include',
+          });
+          if (me.ok) {
+            showToast('Đăng nhập thành công', 'success');
+            router.replace('/customer/home');
+            return;
+          }
+        } catch {}
+        // Fallback nếu xác thực me lỗi vẫn cho vào home (middleware sẽ chặn nếu chưa có token)
+        router.replace('/customer/home');
       } else {
         const errorData = await response.json();
         const msg = errorData.message || 'Đăng nhập thất bại';
