@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { notificationService, Notification, NotificationStats } from "@/services/notification.service";
+import { notificationService } from "@/services/notification.service";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface NotificationCenterProps {
@@ -10,9 +10,20 @@ interface NotificationCenterProps {
   className?: string;
 }
 
+type NotificationItem = {
+  id: string;
+  title: string;
+  message: string;
+  createdAt: string;
+  status: 'read' | 'unread';
+  actionUrl?: string;
+};
+
+type SimpleStats = { total: number; unread: number; byType: Record<string, number> };
+
 export default function NotificationCenter({ isOpen, onClose, className = "" }: NotificationCenterProps) {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [stats, setStats] = useState<NotificationStats | null>(null);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [stats, setStats] = useState<SimpleStats | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'order' | 'promotion'>('all');
   const [page, setPage] = useState(1);
@@ -46,8 +57,8 @@ export default function NotificationCenter({ isOpen, onClose, className = "" }: 
     setIsLoading(true);
     try {
       const options: any = {
-        page,
         limit: 20,
+        skip: (page - 1) * 20,
       };
 
       if (activeTab === 'unread') {
@@ -56,15 +67,22 @@ export default function NotificationCenter({ isOpen, onClose, className = "" }: 
         options.type = activeTab;
       }
 
-      const response = await notificationService.getNotifications(options);
-      
-      if (page === 1) {
-        setNotifications(response.notifications);
-      } else {
-        setNotifications(prev => [...prev, ...response.notifications]);
-      }
-      
-      setHasMore(response.pagination.hasMore);
+      const res = await notificationService.restaurant.getNotifications(options);
+      const mapped = (res.data || []).map((n: any) => ({
+        id: n._id,
+        title: n.title,
+        message: n.content,
+        createdAt: n.createdAt,
+        status: n.read ? 'read' as const : 'unread' as const,
+        actionUrl: n.metadata?.actionUrl,
+      }));
+
+      if (page === 1) setNotifications(mapped);
+      else setNotifications(prev => [...prev, ...mapped]);
+
+      const total = res.pagination?.total ?? (options.skip + mapped.length);
+      const hasMoreCalc = options.skip + mapped.length < total;
+      setHasMore(Boolean(hasMoreCalc));
     } catch (error) {
       console.error('Error loading notifications:', error);
     } finally {
@@ -74,16 +92,16 @@ export default function NotificationCenter({ isOpen, onClose, className = "" }: 
 
   const loadStats = async () => {
     try {
-      const statsData = await notificationService.getStats();
-      setStats(statsData);
+      const unreadRes = await notificationService.restaurant.getUnreadCount();
+      setStats({ total: notifications.length, unread: unreadRes.unreadCount || 0, byType: {} });
     } catch (error) {
       console.error('Error loading notification stats:', error);
     }
   };
 
-  const handleMarkAsRead = async (notification: Notification) => {
+  const handleMarkAsRead = async (notification: NotificationItem) => {
     try {
-      await notificationService.markAsRead(notification.id);
+      await notificationService.restaurant.markAsRead(notification.id);
       setNotifications(prev => 
         prev.map(n => 
           n.id === notification.id 
@@ -234,9 +252,7 @@ export default function NotificationCenter({ isOpen, onClose, className = "" }: 
                   >
                     <div className="flex items-start space-x-3">
                       <div className="flex-shrink-0">
-                        <span className="text-lg">
-                          {notificationService.getNotificationIcon(notification.type)}
-                        </span>
+                        <span className="text-lg">🔔</span>
                       </div>
                       
                       <div className="flex-1 min-w-0">
@@ -247,24 +263,13 @@ export default function NotificationCenter({ isOpen, onClose, className = "" }: 
                             {notification.title}
                           </p>
                           <div className="flex items-center space-x-2">
-                            {notification.priority === 'high' || notification.priority === 'urgent' ? (
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                notification.priority === 'urgent' 
-                                  ? 'bg-red-100 text-red-800' 
-                                  : 'bg-orange-100 text-orange-800'
-                              }`}>
-                                {notification.priority === 'urgent' ? 'Khẩn cấp' : 'Quan trọng'}
-                              </span>
-                            ) : null}
                             <span className="text-xs text-gray-500">
-                              {notificationService.formatDate(notification.createdAt)}
+                              {new Date(notification.createdAt).toLocaleString('vi-VN')}
                             </span>
                           </div>
                         </div>
                         
-                        <p className="mt-1 text-sm text-gray-600 line-clamp-2">
-                          {notification.message}
-                        </p>
+                        <p className="mt-1 text-sm text-gray-600 line-clamp-2">{notification.message}</p>
 
                         {notification.actionUrl && (
                           <div className="mt-2">
