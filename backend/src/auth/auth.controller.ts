@@ -31,8 +31,8 @@ export class AuthController {
     // Set role-specific access token cookie
     res.cookie(cookieNames.accessToken, result.access_token, {
       httpOnly: true,
-      sameSite: 'lax',
-      secure: false,
+      sameSite: 'none',
+      secure: true,
       maxAge: 60 * 60 * 1000,
       path: '/',
     });
@@ -41,8 +41,8 @@ export class AuthController {
     const roleCookie = `${result.user.role}_token`.toLowerCase();
     res.cookie(roleCookie, '1', {
       httpOnly: true,
-      sameSite: 'lax',
-      secure: false,
+      sameSite: 'none',
+      secure: true,
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: '/',
     });
@@ -62,22 +62,22 @@ export class AuthController {
     // Set role-specific cookies
     res.cookie(cookieNames.accessToken, result.access_token, {
       httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'none',
+      secure: true,
       maxAge: 15 * 60 * 1000,
       path: '/',
     });
     res.cookie(cookieNames.refreshToken, result.refresh_token, {
       httpOnly: true,
-      sameSite: 'strict',
-      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'none',
+      secure: true,
       maxAge: 30 * 24 * 60 * 60 * 1000,
       path: '/auth',
     });
     res.cookie(cookieNames.csrfToken, result.csrf || '', {
       httpOnly: false,
-      sameSite: 'strict',
-      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'none',
+      secure: true,
       maxAge: 30 * 24 * 60 * 60 * 1000,
       path: '/auth',
     });
@@ -114,8 +114,8 @@ export class AuthController {
     // Set role-specific access token cookie
     res.cookie(cookieNames.accessToken, result.access_token, {
       httpOnly: true,
-      sameSite: 'lax',
-      secure: false,
+      sameSite: 'none',
+      secure: true,
       maxAge: 60 * 60 * 1000,
       path: '/',
     });
@@ -124,8 +124,8 @@ export class AuthController {
     const roleCookie = `${result.user.role}_token`.toLowerCase();
     res.cookie(roleCookie, '1', {
       httpOnly: true,
-      sameSite: 'lax',
-      secure: false,
+      sameSite: 'none',
+      secure: true,
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: '/',
     });
