@@ -36,6 +36,12 @@ export default function CustomerLoginPage() {
         // Cookie-based session: cookies are automatically set by backend
         const data = await response.json().catch(() => null);
         
+        // Đặt role-indicator cookie ở domain FE để middleware/guard nhận diện (không nhạy cảm)
+        try {
+          const maxAge = 60 * 60 * 24; // 1 day
+          document.cookie = `customer_token=1; path=/; SameSite=Lax; max-age=${maxAge}`;
+        } catch {}
+
         // Redirect to home page after successful login
         console.log('🔍 Login: Redirecting to /customer/home');
         showToast('Đăng nhập thành công', 'success');
