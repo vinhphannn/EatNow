@@ -16,33 +16,24 @@ export function middleware(request: NextRequest) {
   );
 
   if (!isPublicRoute) {
+    // Middleware chỉ dựa vào role-indicator (không nhạy cảm) để quyết định điều hướng.
+    // Token thật là HttpOnly sẽ được xác thực ở /auth/me phía client.
+
     if (pathname.startsWith('/driver/')) {
-      const driverAccessToken = request.cookies.get('driver_access_token');
       const driverToken = request.cookies.get('driver_token');
-      if (!driverAccessToken || !driverToken) {
-        return NextResponse.redirect(new URL('/driver/login', request.url));
-      }
+      if (!driverToken) return NextResponse.redirect(new URL('/driver/login', request.url));
     }
     if (pathname.startsWith('/customer/')) {
-      const customerAccessToken = request.cookies.get('customer_access_token');
       const customerToken = request.cookies.get('customer_token');
-      if (!customerAccessToken || !customerToken) {
-        return NextResponse.redirect(new URL('/customer/login', request.url));
-      }
+      if (!customerToken) return NextResponse.redirect(new URL('/customer/login', request.url));
     }
     if (pathname.startsWith('/restaurant/')) {
-      const restaurantAccessToken = request.cookies.get('restaurant_access_token');
       const restaurantToken = request.cookies.get('restaurant_token');
-      if (!restaurantAccessToken || !restaurantToken) {
-        return NextResponse.redirect(new URL('/restaurant/login', request.url));
-      }
+      if (!restaurantToken) return NextResponse.redirect(new URL('/restaurant/login', request.url));
     }
     if (pathname.startsWith('/admin/')) {
-      const adminAccessToken = request.cookies.get('admin_access_token');
       const adminToken = request.cookies.get('admin_token');
-      if (!adminAccessToken || !adminToken) {
-        return NextResponse.redirect(new URL('/admin/login', request.url));
-      }
+      if (!adminToken) return NextResponse.redirect(new URL('/admin/login', request.url));
     }
   }
   
