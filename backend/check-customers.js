@@ -30,3 +30,13 @@ async function checkCustomers() {
 }
 
 checkCustomers().catch(console.error);
+
+
+
+
+
+// # Redirect web sau khi thanh toán (frontend Next.js)
+// MOMO_REDIRECT_URL=http://localhost:3003/customer/wallet/success
+
+// # IPN công khai từ ngrok (thay YOUR_SUB theo subdomain ngrok thực tế)
+// MOMO_IPN_URL=https://943a7da387e3.ngrok-free.app/api/v1/payment/momo/callback
