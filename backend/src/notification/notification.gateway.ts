@@ -61,16 +61,32 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
   afterInit() {
     // Optional Redis adapter wiring (env-driven)
     try {
+      const disabled = process.env.REDIS_DISABLE === 'true';
+      if (disabled) return;
       const url = process.env.REDIS_URL || process.env.REDIS_URI;
-      if (!url) return;
+      const host = process.env.REDIS_HOST;
+      const port = process.env.REDIS_PORT ? Number(process.env.REDIS_PORT) : undefined;
+      const username = process.env.REDIS_USERNAME || 'default';
+      const password = process.env.REDIS_PASSWORD;
+      const tlsEnabled = process.env.REDIS_TLS === 'true' || (url && url.startsWith('rediss://'));
+      if (!url && !host) return;
       // Dynamically require to avoid hard dependency
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { createAdapter } = require('@socket.io/redis-adapter');
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const IORedis = require('ioredis');
-      this.redisPub = new IORedis(url);
-      this.redisSub = new IORedis(url);
-      this.redisKV = new IORedis(url);
+      const baseOptions: any = { username };
+      if (tlsEnabled) baseOptions.tls = { rejectUnauthorized: false };
+      if (url) {
+        this.redisPub = new IORedis(url, baseOptions);
+        this.redisSub = new IORedis(url, baseOptions);
+        this.redisKV = new IORedis(url, baseOptions);
+      } else {
+        const common = { host, port: port || 6379, username, password, ...baseOptions };
+        this.redisPub = new IORedis(common);
+        this.redisSub = new IORedis(common);
+        this.redisKV = new IORedis(common);
+      }
       this.server.adapter(createAdapter(this.redisPub, this.redisSub));
       this.redisEnabled = true;
       // redis adapter enabled

@@ -173,11 +173,19 @@ export class OrderController {
 
     // Redis KV sets for orchestration (best-effort)
     try {
+      const disabled = process.env.REDIS_DISABLE === 'true';
       const url = process.env.REDIS_URL || process.env.REDIS_URI;
-      if (url) {
+      const host = process.env.REDIS_HOST;
+      const port = process.env.REDIS_PORT ? Number(process.env.REDIS_PORT) : undefined;
+      const username = process.env.REDIS_USERNAME || 'default';
+      const password = process.env.REDIS_PASSWORD;
+      const tlsEnabled = process.env.REDIS_TLS === 'true' || (url && url.startsWith('rediss://'));
+      if (!disabled && (url || host)) {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const IORedis = require('ioredis');
-        const redis = new IORedis(url);
+        const baseOptions: any = { username };
+        if (tlsEnabled) baseOptions.tls = { rejectUnauthorized: false };
+        const redis = url ? new IORedis(url, baseOptions) : new IORedis({ host, port: port || 6379, password, ...baseOptions });
         await redis.sadd(`order:${orderId}:drivers`, driverId);
         await redis.set(`order:${orderId}:status`, 'confirmed');
         await redis.set(`order:${orderId}:updatedAt`, String(Date.now()));

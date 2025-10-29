@@ -37,16 +37,28 @@ export class DriverPresenceService {
 
   private async initRedis() {
     try {
+      const disabled = process.env.REDIS_DISABLE === 'true';
+      if (disabled) {
+        this.logger.warn('Redis disabled via REDIS_DISABLE=true; driver presence limited');
+        return;
+      }
+
       const url = process.env.REDIS_URL || process.env.REDIS_URI;
-      if (!url) {
+      const host = process.env.REDIS_HOST;
+      const port = process.env.REDIS_PORT ? Number(process.env.REDIS_PORT) : undefined;
+      const username = process.env.REDIS_USERNAME || 'default';
+      const password = process.env.REDIS_PASSWORD;
+      const tlsEnabled = process.env.REDIS_TLS === 'true' || (url && url.startsWith('rediss://'));
+
+      if (!url && !host) {
         this.logger.warn('Redis not configured, driver presence tracking will be limited');
         return;
       }
 
       const IORedis = require('ioredis');
       
-      // Connection với options để tối ưu performance
-      this.redis = new IORedis(url, {
+      // Connection với options để tối ưu performance + TLS
+      const baseOptions: any = {
         maxRetriesPerRequest: 3,
         connectTimeout: 10000,
         commandTimeout: 5000,
@@ -55,8 +67,24 @@ export class DriverPresenceService {
         keepAlive: 30000,
         // Connection pool settings
         enableReadyCheck: true,
-        enableOfflineQueue: true
-      });
+        enableOfflineQueue: true,
+      };
+
+      if (tlsEnabled) {
+        baseOptions.tls = { rejectUnauthorized: false };
+      }
+
+      if (url) {
+        this.redis = new IORedis(url, { username, ...baseOptions });
+      } else {
+        this.redis = new IORedis({
+          host,
+          port: port || 6379,
+          username,
+          password,
+          ...baseOptions,
+        });
+      }
 
       // Error handling
       this.redis.on('error', (err: any) => {

@@ -34,14 +34,30 @@ export class OrderQueueService {
 
   private async initRedis() {
     try {
+      const disabled = process.env.REDIS_DISABLE === 'true';
+      if (disabled) {
+        this.logger.warn('Redis disabled via REDIS_DISABLE=true; order queue limited');
+        return;
+      }
       const url = process.env.REDIS_URL || process.env.REDIS_URI;
-      if (!url) {
+      const host = process.env.REDIS_HOST;
+      const port = process.env.REDIS_PORT ? Number(process.env.REDIS_PORT) : undefined;
+      const username = process.env.REDIS_USERNAME || 'default';
+      const password = process.env.REDIS_PASSWORD;
+      const tlsEnabled = process.env.REDIS_TLS === 'true' || (url && url.startsWith('rediss://'));
+      if (!url && !host) {
         this.logger.warn('Redis not configured');
         return;
       }
 
       const IORedis = require('ioredis');
-      this.redis = new IORedis(url);
+      const baseOptions: any = { username };
+      if (tlsEnabled) baseOptions.tls = { rejectUnauthorized: false };
+      if (url) {
+        this.redis = new IORedis(url, baseOptions);
+      } else {
+        this.redis = new IORedis({ host, port: port || 6379, username, password, ...baseOptions });
+      }
       this.logger.log('✅ Redis connected for order queue');
     } catch (error) {
       this.logger.error('Failed to connect to Redis:', error);
