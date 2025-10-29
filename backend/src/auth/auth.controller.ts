@@ -31,10 +31,11 @@ export class AuthController {
     const roles = ['customer', 'restaurant', 'driver', 'admin'];
     roles.forEach((role) => {
       if (role === result.user.role.toLowerCase()) return;
-      res.clearCookie(`${role}_access_token`, { path: '/' });
-      res.clearCookie(`${role}_refresh_token`, { path: '/auth' });
-      res.clearCookie(`${role}_csrf_token`, { path: '/auth' });
-      res.clearCookie(`${role}_token`, { path: '/' });
+      const base = { sameSite: 'none' as const, secure: true };
+      res.clearCookie(`${role}_access_token`, { path: '/', ...base });
+      res.clearCookie(`${role}_refresh_token`, { path: '/auth', ...base });
+      res.clearCookie(`${role}_csrf_token`, { path: '/auth', ...base });
+      res.clearCookie(`${role}_token`, { path: '/', ...base });
     });
     
     // Set role-specific access token cookie
@@ -50,7 +51,7 @@ export class AuthController {
     // Set role indicator cookie
     const roleCookie = `${result.user.role}_token`.toLowerCase();
     res.cookie(roleCookie, '1', {
-      httpOnly: true,
+      httpOnly: false,
       sameSite: 'none',
       secure: true,
       maxAge: 7 * 24 * 60 * 60 * 1000,
@@ -103,12 +104,13 @@ export class AuthController {
     const roles = ['customer', 'restaurant', 'driver', 'admin'];
     
     roles.forEach(role => {
+      const base = { sameSite: 'none' as const, secure: true };
       // Clear role-specific access tokens
-      res.clearCookie(`${role}_access_token`, { path: '/' });
-      res.clearCookie(`${role}_refresh_token`, { path: '/auth' });
-      res.clearCookie(`${role}_csrf_token`, { path: '/auth' });
+      res.clearCookie(`${role}_access_token`, { path: '/', ...base });
+      res.clearCookie(`${role}_refresh_token`, { path: '/auth', ...base });
+      res.clearCookie(`${role}_csrf_token`, { path: '/auth', ...base });
       // Clear role indicator cookies
-      res.clearCookie(`${role}_token`, { path: '/' });
+      res.clearCookie(`${role}_token`, { path: '/', ...base });
     });
     
     try { await this.auth.revokeCurrentRefreshToken(req); } catch {}
@@ -125,10 +127,11 @@ export class AuthController {
     const rolesReg = ['customer', 'restaurant', 'driver', 'admin'];
     rolesReg.forEach((role) => {
       if (role === result.user.role.toLowerCase()) return;
-      res.clearCookie(`${role}_access_token`, { path: '/' });
-      res.clearCookie(`${role}_refresh_token`, { path: '/auth' });
-      res.clearCookie(`${role}_csrf_token`, { path: '/auth' });
-      res.clearCookie(`${role}_token`, { path: '/' });
+      const base = { sameSite: 'none' as const, secure: true };
+      res.clearCookie(`${role}_access_token`, { path: '/', ...base });
+      res.clearCookie(`${role}_refresh_token`, { path: '/auth', ...base });
+      res.clearCookie(`${role}_csrf_token`, { path: '/auth', ...base });
+      res.clearCookie(`${role}_token`, { path: '/', ...base });
     });
     
     // Set role-specific access token cookie
@@ -143,7 +146,7 @@ export class AuthController {
     // Set role indicator cookie
     const roleCookie = `${result.user.role}_token`.toLowerCase();
     res.cookie(roleCookie, '1', {
-      httpOnly: true,
+      httpOnly: false,
       sameSite: 'none',
       secure: true,
       maxAge: 7 * 24 * 60 * 60 * 1000,
