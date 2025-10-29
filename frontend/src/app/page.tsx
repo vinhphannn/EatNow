@@ -198,3 +198,18 @@ export default function LandingPage() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+// NEXT_PUBLIC_API_URL=http://localhost:3001
+// NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
+// NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=dfqfabmkx
+// NEXT_PUBLIC_WS_URL=http://localhost:3001
+// NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=preset
