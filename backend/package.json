@@ -5,8 +5,8 @@
   "scripts": {
     "dev": "nest start --watch",
     "start:dev": "node --max-old-space-size=4096 -r ts-node/register src/main.ts",
-    "build": "tsc -p tsconfig.json",
-    "start": "node --max-old-space-size=4096 dist/main.js",
+    "build": "rimraf dist tsconfig.tsbuildinfo && tsc -p tsconfig.json",
+    "start": "node dist/main.js",
     "test": "jest --passWithNoTests",
     "test:watch": "jest --watch",
     "test:integration": "jest backend/src/auth/__tests__/auth.integration.spec.ts",
