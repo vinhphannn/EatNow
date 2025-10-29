@@ -36,6 +36,14 @@ export class AuthController {
       maxAge: 60 * 60 * 1000,
       path: '/',
     });
+    // Set generic access_token for backward compatibility (guards/middleware đọc cookie này)
+    res.cookie('access_token', result.access_token, {
+      httpOnly: true,
+      sameSite: 'none',
+      secure: true,
+      maxAge: 60 * 60 * 1000,
+      path: '/',
+    });
     
     // Set role indicator cookie
     const roleCookie = `${result.user.role}_token`.toLowerCase();
@@ -61,6 +69,13 @@ export class AuthController {
     
     // Set role-specific cookies
     res.cookie(cookieNames.accessToken, result.access_token, {
+      httpOnly: true,
+      sameSite: 'none',
+      secure: true,
+      maxAge: 15 * 60 * 1000,
+      path: '/',
+    });
+    res.cookie('access_token', result.access_token, {
       httpOnly: true,
       sameSite: 'none',
       secure: true,
