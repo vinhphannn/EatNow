@@ -22,6 +22,14 @@ export function AuthGuard({
 }: AuthGuardProps) {
   const { isAuthenticated, isLoading, user, hasRole, checkPermission } = useAuth();
   const router = useRouter();
+  
+  // Nếu middleware đã cho qua (có role-indicator cookie non-HttpOnly),
+  // tạm thời không redirect tại guard để tránh vòng lặp khi cross-site.
+  const hasRoleIndicator = (() => {
+    if (typeof document === 'undefined' || !requiredRole) return false;
+    const name = `${String(requiredRole).toLowerCase()}_token=`;
+    return document.cookie.split(';').some(c => c.trim().startsWith(name));
+  })();
 
   useEffect(() => {
     if (isLoading) {
@@ -30,6 +38,10 @@ export function AuthGuard({
 
     // Check if user is authenticated
     if (!isAuthenticated || !user) {
+      if (hasRoleIndicator) {
+        // Đã có indicator từ middleware → để client tiếp tục gọi /auth/me phía trong trang
+        return;
+      }
       router.replace(fallbackPath);
       return;
     }
@@ -65,8 +77,9 @@ export function AuthGuard({
     );
   }
 
-  // Don't render children if not authenticated or authorized
+  // Cho qua nếu có indicator (đã được middleware xác thực sơ bộ)
   if (!isAuthenticated || !user) {
+    if (hasRoleIndicator) return <>{children}</>;
     return null;
   }
 
