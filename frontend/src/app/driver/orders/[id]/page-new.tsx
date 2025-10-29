@@ -135,13 +135,13 @@ export default function DriverOrderDetailPage() {
                     await driverService.acceptOrder(orderId);
                     break;
                 case 'picking_up':
-                    await driverService.arrivedAtRestaurant(orderId);
+                    await driverService.updateOrderStatus(orderId, { status: 'arrived_at_restaurant' } as any);
                     break;
                 case 'delivering':
-                    await driverService.pickedUp(orderId);
+                    await driverService.updateOrderStatus(orderId, { status: 'picked_up' } as any);
                     break;
                 case 'delivered':
-                    await driverService.delivered(orderId);
+                    await driverService.updateOrderStatus(orderId, { status: 'delivered' } as any);
                     break;
                 default:
                     throw new Error('Invalid status transition');
