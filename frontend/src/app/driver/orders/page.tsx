@@ -50,7 +50,7 @@ export default function DriverOrdersTestPage() {
   const completeOrder = async (orderId: string) => {
     setBusyId(orderId);
     try {
-      await driverService.completeOrder(orderId);
+      await driverService.updateOrderStatus(orderId, { status: 'delivered' } as any);
       queryClient.invalidateQueries({ queryKey: ['driverActiveOrders'] });
       queryClient.invalidateQueries({ queryKey: ['availableOrders'] });
     } catch (e: any) {
