@@ -45,3 +45,4 @@ frontend/tailieu/
  node_modules/\; Add-Content -Encoding UTF8 .gitignore \**/node_modules/\; Add-Content -Encoding UTF8 .gitignore \frontend/public/EatNow.rar\; Add-Content -Encoding UTF8 .gitignore \*.rar
 *.rar
 frontend/public/EatNow.rar
+.cursor/
