@@ -38,7 +38,7 @@ mobile/      # Flutter skeleton
 ### 1) Clone & chuẩn bị
 ```bash
 # Clone repo
-git clone <your-repo-url>
+git clone https://github.com/vinhphannn/EatNow.git
 cd EatNow
 ```
 
@@ -213,4 +213,4 @@ Xem hướng dẫn chi tiết: `DEPLOYMENT.md`
 - Viết TypeScript rõ ràng, DTO/Schema tường minh, RESTful chuẩn
 
 ---
-Nếu bạn cần mình hướng dẫn chi tiết theo vai trò (VD: quy trình test end‑to‑end Customer → Restaurant → Driver) hoặc viết script seed nhanh, hãy mở issue/trao đổi để mình bổ sung.
+
