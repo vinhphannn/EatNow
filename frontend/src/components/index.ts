@@ -47,3 +47,6 @@ export {
 // Device Management
 export { DeviceManager } from './device/DeviceManager';
 export { default as OrderChat } from './order/OrderChat';
+
+// Restaurant components
+export { RestaurantCard } from './restaurant/RestaurantCard';

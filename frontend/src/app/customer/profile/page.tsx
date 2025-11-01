@@ -6,6 +6,7 @@ import Link from "next/link";
 import { apiClient } from "@/services/api.client";
 import { useToast } from "@/components";
 import { useCustomerAuth } from "@/contexts/AuthContext";
+import { useDeliveryAddress } from "@/contexts/DeliveryAddressContext";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faMapMarkerAlt, faWallet, faHeart, faUser, faEdit, faTrash, faPlus, faStar, faPhone, faStickyNote, faSignOutAlt } from "@fortawesome/free-solid-svg-icons";
 
@@ -37,6 +38,7 @@ interface FavoriteRestaurant {
 export default function CustomerProfilePage() {
   const { showToast } = useToast();
   const { user, logout } = useCustomerAuth();
+  const { userLocation } = useDeliveryAddress();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'addresses' | 'wallet' | 'favorites'>('addresses');
   const [loading, setLoading] = useState(true);
@@ -51,6 +53,52 @@ export default function CustomerProfilePage() {
   
   // Wallet management
   const [walletInfo, setWalletInfo] = useState<WalletInfo>({ balance: 0, transactions: [] });
+
+  // Lấy địa chỉ từ tọa độ
+  const getAddressFromCoordinates = async (lat: number, lng: number): Promise<string> => {
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`
+      );
+      const data = await response.json();
+      
+      if (data && data.display_name) {
+        const address = data.display_name
+          .split(',')
+          .map((part: string) => part.trim())
+          .filter((part: string) => part.length > 0)
+          .slice(0, -3) // Bỏ các phần không cần thiết
+          .join(', ');
+        return address;
+      }
+      return '';
+    } catch (error) {
+      console.error('Reverse geocoding error:', error);
+      return '';
+    }
+  };
+
+  // Cập nhật form khi có vị trí từ context
+  useEffect(() => {
+    if (userLocation && !form.latitude && !form.longitude) {
+      setForm(prev => ({
+        ...prev,
+        latitude: userLocation.latitude,
+        longitude: userLocation.longitude,
+      }));
+
+      // Tự động điền địa chỉ nếu trường địa chỉ trống
+      if (!form.addressLine) {
+        getAddressFromCoordinates(userLocation.latitude, userLocation.longitude).then(generatedAddress => {
+          if (generatedAddress) {
+            setForm(prev => ({ ...prev, addressLine: generatedAddress }));
+            showToast('Đã tự động điền vị trí và địa chỉ của bạn', 'success');
+          }
+        });
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userLocation]);
   
   // Favorites management
   const [favoriteRestaurants, setFavoriteRestaurants] = useState<FavoriteRestaurant[]>([]);
@@ -89,49 +137,7 @@ export default function CustomerProfilePage() {
           // Favorites not available
         }
 
-        // Get user's current location ONCE when page loads
-        if (navigator.geolocation) {
-          showToast('Đang lấy vị trí của bạn...', 'info');
-          navigator.geolocation.getCurrentPosition(
-            async (position) => {
-              const { latitude, longitude } = position.coords;
-              
-              // Auto-generate address from current location
-              const generatedAddress = await getAddressFromCoordinates(latitude, longitude);
-              if (generatedAddress) {
-                setForm(prev => ({
-                  ...prev,
-                  latitude,
-                  longitude,
-                  addressLine: generatedAddress
-                }));
-                showToast('Đã lấy vị trí và tạo địa chỉ tự động', 'success');
-              } else {
-                setForm(prev => ({
-                  ...prev,
-                  latitude,
-                  longitude
-                }));
-                showToast('Đã lấy vị trí, vui lòng nhập địa chỉ thủ công', 'info');
-              }
-              
-              // Map will be initialized automatically by useEffect when form.latitude/longitude change
-            },
-            (error) => {
-              console.error('Geolocation error:', error);
-              showToast('Không thể lấy vị trí. Vui lòng chọn vị trí thủ công trên bản đồ.', 'error');
-              // Map will be initialized with default location
-            },
-            {
-              enableHighAccuracy: true,
-              timeout: 10000,
-              maximumAge: 300000
-            }
-          );
-        } else {
-          showToast('Trình duyệt không hỗ trợ định vị. Vui lòng chọn vị trí thủ công trên bản đồ.', 'error');
-          // Map will be initialized with default location
-        }
+
         
       } catch (e) {
         console.error('Error loading profile data:', e);
@@ -349,31 +355,7 @@ export default function CustomerProfilePage() {
     };
   }, []); // Only run on unmount
 
-  // Reverse geocoding function
-  const getAddressFromCoordinates = async (lat: number, lng: number): Promise<string> => {
-    try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`
-      );
-      const data = await response.json();
-      
-      if (data && data.display_name) {
-        // Format address for Vietnam
-        const address = data.display_name
-          .split(',')
-          .map((part: string) => part.trim())
-          .filter((part: string) => part.length > 0)
-          .slice(0, -3) // Remove country, continent
-          .join(', ');
-        
-        return address;
-      }
-      return '';
-    } catch (error) {
-      console.error('Reverse geocoding error:', error);
-      return '';
-    }
-  };
+
 
   const handleSave = async () => {
     try {

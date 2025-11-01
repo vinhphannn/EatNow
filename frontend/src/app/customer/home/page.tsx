@@ -4,12 +4,13 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CustomerGuard } from "@/components/guards/AuthGuard";
-import { useToast } from "@/components";
+import { useToast, RestaurantCard } from "@/components";
 import { useCustomerAuth } from "@/contexts/AuthContext";
 import { useDeliveryAddress } from "@/contexts/DeliveryAddressContext";
 import { useRestaurants } from "@/hooks/useRestaurants";
 import { usePublicCategories } from "@/hooks/useCategories";
 import { useFeaturedCollections } from "@/hooks/useFeaturedCollections";
+import { useRestaurantDistance } from "@/hooks/useRestaurantDistance";
 import { cartService } from "@/services/cart.service";
 import { apiClient } from "@/services/api.client";
 import useEmblaCarousel from "embla-carousel-react";
@@ -93,6 +94,7 @@ import {
   faTruckPlane
 } from "@fortawesome/free-solid-svg-icons";
 import { faTwitter, faFacebook, faInstagram } from "@fortawesome/free-brands-svg-icons";
+import { haversineKm } from "@/utils/geo";
 
 function CustomerHomeContent() {
   const { user } = useCustomerAuth();
@@ -100,31 +102,7 @@ function CustomerHomeContent() {
   const { addressLabel, setAddressLabel, userLocation, setUserLocation } = useDeliveryAddress();
   const pathname = usePathname();
   
-  // Reverse geocoding function
-  const getAddressFromCoordinates = async (lat: number, lng: number): Promise<string> => {
-    try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`
-      );
-      const data = await response.json();
-      
-      if (data && data.display_name) {
-        // Format address for Vietnam
-        const address = data.display_name
-          .split(',')
-          .map((part: string) => part.trim())
-          .filter((part: string) => part.length > 0)
-          .slice(0, -3) // Remove country, continent
-          .join(', ');
-        
-        return address;
-      }
-      return '';
-    } catch (error) {
-      console.error('Reverse geocoding error:', error);
-      return '';
-    }
-  };
+
 
   // Icon mapping function
   const getIconComponent = (iconString: string) => {
@@ -236,6 +214,20 @@ function CustomerHomeContent() {
     setScrollSnaps(emblaApi.scrollSnapList());
   }, []);
 
+  // Wrapper function để tính khoảng cách cho từng restaurant trong map
+  // Sử dụng hook useRestaurantDistance cho từng item trong list
+  const formatDistanceKm = (restaurant: any) => {
+    if (!userLocation || restaurant.latitude == null || restaurant.longitude == null) return null;
+    const km = haversineKm(
+      userLocation.latitude,
+      userLocation.longitude,
+      restaurant.latitude,
+      restaurant.longitude
+    );
+    if (!isFinite(km)) return null;
+    return `${km.toFixed(1)} km`;
+  };
+
   const onSelect = useCallback((emblaApi: any) => {
     setSelectedIndex(emblaApi.selectedScrollSnap());
   }, []);
@@ -248,54 +240,7 @@ function CustomerHomeContent() {
     heroEmblaApi.on('select', onSelect);
   }, [heroEmblaApi, onInit, onSelect]);
 
-  // Get user location and set delivery address
-  useEffect(() => {
-    const getCurrentLocation = async () => {
-      if (navigator.geolocation) {
-        showToast('Đang lấy vị trí của bạn...', 'info');
-        navigator.geolocation.getCurrentPosition(
-          async (position) => {
-            const { latitude, longitude } = position.coords;
-            console.log('📍 User location:', latitude, longitude);
-            
-            setUserLocation({ latitude, longitude });
-            
-            // Auto-generate address from current location
-            const generatedAddress = await getAddressFromCoordinates(latitude, longitude);
-            if (generatedAddress) {
-              setAddressLabel(generatedAddress);
-              showToast('Đã lấy vị trí và cập nhật địa chỉ giao hàng', 'success');
-            } else {
-              setAddressLabel('Vị trí hiện tại');
-              showToast('Đã lấy vị trí, không thể tạo địa chỉ tự động', 'info');
-            }
-          },
-          (error) => {
-            console.error('Geolocation error:', error);
-            showToast('Không thể lấy vị trí. Sử dụng địa chỉ đã lưu.', 'error');
-            // Fallback to saved address
-            loadSavedAddress();
-          },
-          {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 300000
-          }
-        );
-      } else {
-        showToast('Trình duyệt không hỗ trợ định vị. Sử dụng địa chỉ đã lưu.', 'error');
-        // Fallback to saved address
-        loadSavedAddress();
-      }
-    };
 
-    const loadSavedAddress = () => {
-      // Address is now managed by DeliveryAddressContext
-      // No need to load here as it's already loaded in the context
-    };
-
-    getCurrentLocation();
-  }, []);
 
   // Feature flag: static promotions disabled in production
   useEffect(() => {
@@ -459,14 +404,6 @@ function CustomerHomeContent() {
       {/* Categories Section */}
       <section className="py-16 bg-gray-50">
         <div className="container mx-auto px-3 max-w-7xl">
-          <div className="flex items-center justify-between mb-12">
-            <div className="text-center md:text-left">
-              <h2 className="text-4xl font-bold text-gray-900 mb-2">Danh mục món ăn</h2>
-      
-            </div>
-            <Link href="/customer/restaurants" className="hidden md:inline-flex bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-xl hover:bg-gray-50">Xem tất cả</Link>
-          </div>
-          
           <div className="relative">
             {/* Left Arrow */}
             <button
@@ -482,9 +419,9 @@ function CustomerHomeContent() {
               <div className="flex gap-4">
                 {categoriesLoading ? (
                   Array.from({ length: 10 }).map((_, index) => (
-                    <div key={index} className="min-w-[160px] bg-white rounded-2xl p-6 shadow-sm border border-gray-100 animate-pulse">
-                      <div className="text-center">
-                        <div className="w-16 h-16 mx-auto mb-4 bg-gray-200 rounded-full"></div>
+                    <div key={index} className="min-w-[160px] w-[160px] h-[180px] bg-white rounded-2xl p-6 shadow-sm border border-gray-100 animate-pulse flex flex-col">
+                      <div className="text-center flex flex-col items-center justify-center h-full">
+                        <div className="w-16 h-16 mx-auto mb-4 bg-gray-200 rounded-full flex-shrink-0"></div>
                         <div className="h-4 bg-gray-200 rounded w-3/4 mx-auto"></div>
                       </div>
                     </div>
@@ -495,16 +432,16 @@ function CustomerHomeContent() {
                       <Link
                         key={category._id}
                         href={`/customer/restaurants?category=${encodeURIComponent(category.name)}`}
-                        className="min-w-[160px] group bg-white rounded-2xl p-6 shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 hover:border-orange-200"
+                        className="min-w-[160px] w-[160px] h-[180px] group bg-white rounded-2xl p-6 shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 hover:border-orange-200 flex flex-col"
                       >
-                        <div className="text-center">
-                          <div className="w-16 h-16 mx-auto mb-4 bg-orange-100 rounded-full flex items-center justify-center group-hover:bg-orange-200 transition-colors">
+                        <div className="text-center flex flex-col items-center justify-center h-full">
+                          <div className="w-16 h-16 mx-auto mb-4 bg-orange-100 rounded-full flex items-center justify-center group-hover:bg-orange-200 transition-colors flex-shrink-0">
                             <FontAwesomeIcon 
                               icon={getIconComponent(category.icon || '')} 
                               className="text-2xl text-orange-600" 
                             />
                           </div>
-                          <h3 className="font-semibold text-gray-900 group-hover:text-orange-600 transition-colors">
+                          <h3 className="font-semibold text-gray-900 group-hover:text-orange-600 transition-colors line-clamp-2">
                             {category.name}
                           </h3>
                         </div>
@@ -512,7 +449,7 @@ function CustomerHomeContent() {
                     ))}
                     <Link
                       href="/customer/restaurants"
-                      className="min-w-[160px] bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:border-orange-200 hover:shadow-xl transition-all flex items-center justify-center"
+                      className="min-w-[160px] w-[160px] h-[180px] bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:border-orange-200 hover:shadow-xl transition-all flex items-center justify-center"
                     >
                       <span className="text-orange-600 font-semibold">Xem thêm</span>
                     </Link>
@@ -560,57 +497,23 @@ function CustomerHomeContent() {
                       )}
                     </div>
                   </div>
-                  <Link 
-                    href="/customer/restaurants" 
-                    className="text-orange-600 font-medium hover:text-orange-700 flex items-center"
+                  <Link
+                    href="/customer/restaurants"
+                    className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-xl font-semibold transition-colors flex items-center"
                   >
                     Xem tất cả
-                    <FontAwesomeIcon icon={faArrowRight} className="w-4 h-4 ml-1" />
+                    <FontAwesomeIcon icon={faArrowRight} className="w-5 h-5 ml-2" />
                   </Link>
                 </div>
-                
-                {collection.description && (
-                  <p className="text-gray-600 mb-6 max-w-3xl">{collection.description}</p>
-                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {collection.restaurants.map((restaurant) => (
-                    <Link
+                    <RestaurantCard
                       key={restaurant._id}
-                      href={`/customer/restaurants/${restaurant._id}`}
-                      className="group bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-shadow"
-                      prefetch={false}
-                    >
-                      <div className="h-48 bg-gray-100 flex items-center justify-center">
-                        {restaurant.imageUrl ? (
-                          <img
-                            src={restaurant.imageUrl}
-                            alt={restaurant.name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <FontAwesomeIcon icon={faStore} className="text-4xl text-gray-400" />
-                        )}
-                      </div>
-                      <div className="p-4">
-                        <h3 className="font-semibold text-gray-900 mb-2 group-hover:text-orange-600 transition-colors">
-                          {restaurant.name}
-                        </h3>
-                        {restaurant.description && (
-                          <p className="text-gray-600 text-sm mb-3 line-clamp-2">{restaurant.description}</p>
-                        )}
-                        <div className="flex items-center justify-between text-sm text-gray-500">
-                          <span className="flex items-center gap-1">
-                            <FontAwesomeIcon icon={faStar} className="text-yellow-500" /> 
-                            {restaurant.rating || '4.5'}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <FontAwesomeIcon icon={faTruck} /> 
-                            {restaurant.deliveryFee ? `${restaurant.deliveryFee.toLocaleString('vi-VN')}đ` : 'Miễn phí'}
-                          </span>
-                        </div>
-                      </div>
-                    </Link>
+                      restaurant={restaurant}
+                      distance={formatDistanceKm(restaurant)}
+                      showDistance={true}
+                    />
                   ))}
                 </div>
               </div>
@@ -652,34 +555,12 @@ function CustomerHomeContent() {
               ))
             ) : restaurantsData?.restaurants && restaurantsData.restaurants.length > 0 ? (
               restaurantsData.restaurants.slice(0, 5).map((restaurant) => (
-                <Link
+                <RestaurantCard
                   key={restaurant._id || restaurant.id}
-                  href={`/customer/restaurants/${restaurant._id || restaurant.id}`}
-                  className="group bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-shadow"
-                  prefetch={false}
-                >
-                  <div className="h-48 bg-gray-100 flex items-center justify-center">
-                    {restaurant.imageUrl ? (
-                      <img
-                        src={restaurant.imageUrl}
-                        alt={restaurant.name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <FontAwesomeIcon icon={faStore} className="text-4xl text-gray-400" />
-                    )}
-                  </div>
-                  <div className="p-4">
-                    <h3 className="font-semibold text-gray-900 mb-2 group-hover:text-orange-600 transition-colors">
-                        {restaurant.name}
-                      </h3>
-                    <p className="text-gray-600 text-sm mb-3 line-clamp-2">{restaurant.description}</p>
-                    <div className="flex items-center justify-between text-sm text-gray-500">
-                      <span className="flex items-center gap-1"><FontAwesomeIcon icon={faStar} className="text-yellow-500" /> {restaurant.rating || '4.5'}</span>
-                      <span className="flex items-center gap-1"><FontAwesomeIcon icon={faTruck} /> {restaurant.deliveryFee ? `${restaurant.deliveryFee.toLocaleString('vi-VN')}đ` : 'Miễn phí'}</span>
-                    </div>
-                  </div>
-                </Link>
+                  restaurant={restaurant}
+                  distance={formatDistanceKm(restaurant)}
+                  showDistance={true}
+                />
               ))
             ) : (
               <div className="col-span-full text-center py-12">
@@ -846,8 +727,6 @@ function CustomerHomeContent() {
 
 export default function CustomerHomePage() {
   return (
-    <CustomerGuard>
-      <CustomerHomeContent />
-    </CustomerGuard>
+    <CustomerHomeContent />
   );
 }

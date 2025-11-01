@@ -7,6 +7,11 @@ export interface Restaurant {
   name: string;
   description?: string;
   address?: string;
+  ward?: string;
+  district?: string;
+  city?: string;
+  latitude?: number;
+  longitude?: number;
   status: string;
   rating?: number;
   imageUrl?: string;

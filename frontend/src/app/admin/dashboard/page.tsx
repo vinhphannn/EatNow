@@ -1,27 +1,22 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
-  faUsers,
-  faStore,
-  faTruck,
-  faShoppingBag,
-  faDollarSign,
-  faChartLine,
-  faArrowUp,
-  faArrowDown,
-  faEye,
-  faClock,
-  faStar,
-  faMapMarkerAlt,
-  faCog,
-  faBrain,
-  faDatabase,
-  faSync,
-  faCheckCircle,
-  faExclamationTriangle
-} from '@fortawesome/free-solid-svg-icons';
+  Users,
+  Store,
+  Truck,
+  ShoppingBag,
+  DollarSign,
+  LineChart,
+  ArrowUp,
+  ArrowDown,
+  Star,
+  Cog,
+  Brain,
+  RefreshCw,
+  CheckCircle,
+  AlertTriangle
+} from 'lucide-react';
 
 interface DashboardStats {
   totalUsers: number;
@@ -213,7 +208,7 @@ export default function AdminDashboard() {
     {
       title: 'Tổng người dùng',
       value: stats.totalUsers.toLocaleString(),
-      icon: faUsers,
+      icon: Users,
       color: 'bg-blue-500',
       change: '+12%',
       changeType: 'increase'
@@ -221,7 +216,7 @@ export default function AdminDashboard() {
     {
       title: 'Nhà hàng',
       value: stats.totalRestaurants.toLocaleString(),
-      icon: faStore,
+      icon: Store,
       color: 'bg-green-500',
       change: '+5%',
       changeType: 'increase'
@@ -229,7 +224,7 @@ export default function AdminDashboard() {
     {
       title: 'Tài xế',
       value: stats.totalDrivers.toLocaleString(),
-      icon: faTruck,
+      icon: Truck,
       color: 'bg-purple-500',
       change: '+8%',
       changeType: 'increase'
@@ -237,7 +232,7 @@ export default function AdminDashboard() {
     {
       title: 'Tổng đơn hàng',
       value: stats.totalOrders.toLocaleString(),
-      icon: faShoppingBag,
+      icon: ShoppingBag,
       color: 'bg-orange-500',
       change: '+15%',
       changeType: 'increase'
@@ -245,7 +240,7 @@ export default function AdminDashboard() {
     {
       title: 'Doanh thu',
       value: `${(stats.totalRevenue / 1000000).toFixed(1)}M VNĐ`,
-      icon: faDollarSign,
+      icon: DollarSign,
       color: 'bg-red-500',
       change: '+22%',
       changeType: 'increase'
@@ -253,7 +248,7 @@ export default function AdminDashboard() {
     {
       title: 'Đánh giá TB',
       value: stats.averageRating.toFixed(1),
-      icon: faStar,
+      icon: Star,
       color: 'bg-yellow-500',
       change: '+0.2',
       changeType: 'increase'
@@ -277,12 +272,11 @@ export default function AdminDashboard() {
                 <p className="text-sm font-medium text-gray-600">{stat.title}</p>
                 <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
                 <div className="flex items-center mt-2">
-                  <FontAwesomeIcon 
-                    icon={stat.changeType === 'increase' ? faArrowUp : faArrowDown}
-                    className={`w-3 h-3 mr-1 ${
-                      stat.changeType === 'increase' ? 'text-green-500' : 'text-red-500'
-                    }`}
-                  />
+                  {stat.changeType === 'increase' ? (
+                    <ArrowUp className={`w-3 h-3 mr-1 text-green-500`} />
+                  ) : (
+                    <ArrowDown className={`w-3 h-3 mr-1 text-red-500`} />
+                  )}
                   <span className={`text-sm ${
                     stat.changeType === 'increase' ? 'text-green-600' : 'text-red-600'
                   }`}>
@@ -292,7 +286,7 @@ export default function AdminDashboard() {
                 </div>
               </div>
               <div className={`w-12 h-12 ${stat.color} rounded-lg flex items-center justify-center`}>
-                <FontAwesomeIcon icon={stat.icon} className="w-6 h-6 text-white" />
+                <stat.icon className="w-6 h-6 text-white" />
               </div>
             </div>
           </div>
@@ -341,7 +335,7 @@ export default function AdminDashboard() {
 					<div>
                     <p className="text-sm font-medium text-gray-900">{restaurant.name}</p>
                     <div className="flex items-center">
-                      <FontAwesomeIcon icon={faStar} className="w-3 h-3 text-yellow-500 mr-1" />
+                      <Star className="w-3 h-3 text-yellow-500 mr-1" />
                       <span className="text-xs text-gray-500">{restaurant.rating}</span>
                     </div>
                   </div>
@@ -386,7 +380,7 @@ export default function AdminDashboard() {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-              <FontAwesomeIcon icon={faBrain} className="w-5 h-5 text-purple-500 mr-2" />
+              <Brain className="w-5 h-5 text-purple-500 mr-2" />
               Hệ thống gán đơn thông minh
             </h3>
             <button
@@ -394,10 +388,11 @@ export default function AdminDashboard() {
               disabled={systemLoading}
               className="flex items-center px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              <FontAwesomeIcon 
-                icon={systemLoading ? faSync : faCog} 
-                className={`w-4 h-4 mr-2 ${systemLoading ? 'animate-spin' : ''}`} 
-              />
+              {systemLoading ? (
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Cog className="w-4 h-4 mr-2" />
+              )}
               {systemLoading ? 'Đang xử lý...' : 'Trigger Manual'}
             </button>
           </div>
@@ -409,7 +404,7 @@ export default function AdminDashboard() {
                   <p className="text-sm font-medium text-purple-600">Đơn hàng đang tìm tài xế</p>
                   <p className="text-2xl font-bold text-purple-900">{smartStats.data.smartAssignment.pendingOrders}</p>
                 </div>
-                <FontAwesomeIcon icon={faShoppingBag} className="w-8 h-8 text-purple-500" />
+                <ShoppingBag className="w-8 h-8 text-purple-500" />
               </div>
             </div>
             
@@ -419,7 +414,7 @@ export default function AdminDashboard() {
                   <p className="text-sm font-medium text-green-600">Tài xế sẵn sàng</p>
                   <p className="text-2xl font-bold text-green-900">{smartStats.data.smartAssignment.availableDrivers}</p>
                 </div>
-                <FontAwesomeIcon icon={faTruck} className="w-8 h-8 text-green-500" />
+                <Truck className="w-8 h-8 text-green-500" />
               </div>
             </div>
             
@@ -429,10 +424,11 @@ export default function AdminDashboard() {
                   <p className="text-sm font-medium text-blue-600">Trạng thái hệ thống</p>
                   <p className="text-lg font-bold text-blue-900 capitalize">{smartStats.data.smartAssignment.systemStatus}</p>
                 </div>
-                <FontAwesomeIcon 
-                  icon={smartStats.data.smartAssignment.systemStatus === 'running' ? faCheckCircle : faExclamationTriangle} 
-                  className={`w-8 h-8 ${smartStats.data.smartAssignment.systemStatus === 'running' ? 'text-green-500' : 'text-yellow-500'}`} 
-                />
+                {smartStats.data.smartAssignment.systemStatus === 'running' ? (
+                  <CheckCircle className="w-8 h-8 text-green-500" />
+                ) : (
+                  <AlertTriangle className="w-8 h-8 text-yellow-500" />
+                )}
               </div>
             </div>
           </div>
@@ -506,19 +502,19 @@ export default function AdminDashboard() {
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Thao tác nhanh</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <button className="flex flex-col items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-            <FontAwesomeIcon icon={faUsers} className="w-6 h-6 text-blue-500 mb-2" />
+            <Users className="w-6 h-6 text-blue-500 mb-2" />
             <span className="text-sm font-medium">Quản lý người dùng</span>
           </button>
           <button className="flex flex-col items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-            <FontAwesomeIcon icon={faStore} className="w-6 h-6 text-green-500 mb-2" />
+            <Store className="w-6 h-6 text-green-500 mb-2" />
             <span className="text-sm font-medium">Quản lý nhà hàng</span>
           </button>
           <button className="flex flex-col items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-            <FontAwesomeIcon icon={faShoppingBag} className="w-6 h-6 text-orange-500 mb-2" />
+            <ShoppingBag className="w-6 h-6 text-orange-500 mb-2" />
             <span className="text-sm font-medium">Xem đơn hàng</span>
           </button>
           <button className="flex flex-col items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-            <FontAwesomeIcon icon={faChartLine} className="w-6 h-6 text-purple-500 mb-2" />
+            <LineChart className="w-6 h-6 text-purple-500 mb-2" />
             <span className="text-sm font-medium">Báo cáo</span>
           </button>
         </div>

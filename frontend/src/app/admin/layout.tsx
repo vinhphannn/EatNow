@@ -6,105 +6,106 @@ import { usePathname, useRouter } from 'next/navigation';
 import { AdminGuard } from '@/components/guards/AuthGuard';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
 import { toast } from 'react-hot-toast';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
-  faTachometerAlt,
-  faUsers,
-  faStore,
-  faTruck,
-  faShoppingBag,
-  faChartBar,
-  faCog,
-  faBars,
-  faTimes,
-  faUser,
-  faSignOutAlt,
-  faHome,
-  faUtensils,
-  faTags,
-  faImage,
-  faBullhorn,
-  faMap,
-  faWallet,
-  faFileAlt,
-  faShieldAlt,
-  faBell,
-  faQuestionCircle
-} from '@fortawesome/free-solid-svg-icons';
+  LayoutDashboard,
+  Users,
+  Store,
+  Truck,
+  ShoppingBag,
+  BarChart3,
+  Settings,
+  Menu,
+  X,
+  User as UserIcon,
+  LogOut,
+  Home,
+  Utensils,
+  Tags,
+  Image as ImageIcon,
+  Megaphone,
+  Map,
+  Wallet,
+  FileText,
+  Shield,
+  Bell,
+  HelpCircle,
+  ChevronDown,
+  ChevronUp
+} from 'lucide-react';
 
 const adminMenuItems = [
   {
     title: 'Tổng quan',
-    icon: faTachometerAlt,
+    icon: LayoutDashboard,
     href: '/admin/dashboard',
     description: 'Thống kê tổng quan hệ thống'
   },
   {
     title: 'Quản lý người dùng',
-    icon: faUsers,
+    icon: Users,
     href: '/admin/modules/users',
     description: 'Quản lý tất cả người dùng',
     children: [
-      { title: 'Khách hàng', href: '/admin/customers', icon: faUser },
-      { title: 'Nhà hàng', href: '/admin/restaurants', icon: faStore },
-      { title: 'Tài xế', href: '/admin/drivers', icon: faTruck }
+      { title: 'Khách hàng', href: '/admin/customers', icon: UserIcon },
+      { title: 'Nhà hàng', href: '/admin/restaurants', icon: Store },
+      { title: 'Tài xế', href: '/admin/drivers', icon: Truck }
     ]
   },
   {
     title: 'Quản lý nội dung',
-    icon: faUtensils,
+    icon: Utensils,
     href: '/admin/modules/content',
     description: 'Quản lý nội dung hiển thị',
     children: [
-      { title: 'Danh mục món ăn', href: '/admin/categories', icon: faTags },
-      { title: 'Bộ sưu tập nổi bật', href: '/admin/modules/content/collections', icon: faBullhorn },
-      { title: 'Khuyến mãi', href: '/admin/modules/content/promotions', icon: faImage }
+      { title: 'Danh mục món ăn', href: '/admin/categories', icon: Tags },
+      { title: 'Bộ sưu tập nổi bật', href: '/admin/modules/content/collections', icon: Megaphone },
+      { title: 'Khuyến mãi', href: '/admin/modules/content/promotions', icon: ImageIcon }
     ]
   },
   {
     title: 'Quản lý đơn hàng',
-    icon: faShoppingBag,
+    icon: ShoppingBag,
     href: '/admin/orders',
     description: 'Theo dõi và quản lý đơn hàng'
   },
   {
     title: 'Báo cáo & Thống kê',
-    icon: faChartBar,
+    icon: BarChart3,
     href: '/admin/modules/reports',
     description: 'Báo cáo doanh thu và thống kê',
     children: [
-      { title: 'Doanh thu', href: '/admin/modules/reports/revenue', icon: faChartBar },
-      { title: 'Đơn hàng', href: '/admin/modules/reports/orders', icon: faShoppingBag },
-      { title: 'Người dùng', href: '/admin/modules/reports/users', icon: faUsers }
+      { title: 'Doanh thu', href: '/admin/modules/reports/revenue', icon: BarChart3 },
+      { title: 'Đơn hàng', href: '/admin/modules/reports/orders', icon: ShoppingBag },
+      { title: 'Người dùng', href: '/admin/modules/reports/users', icon: Users }
     ]
   },
   {
     title: 'Hệ thống',
-    icon: faCog,
+    icon: Settings,
     href: '/admin/modules/system',
     description: 'Cài đặt và quản lý hệ thống',
     children: [
-      { title: 'Cài đặt chung', href: '/admin/modules/system/settings', icon: faCog },
-      { title: 'Thông báo', href: '/admin/modules/system/notifications', icon: faBell },
-      { title: 'Bảo mật', href: '/admin/modules/system/security', icon: faShieldAlt },
-      { title: 'Backup & Restore', href: '/admin/modules/system/backup', icon: faFileAlt }
+      { title: 'Cài đặt chung', href: '/admin/modules/system/settings', icon: Settings },
+      { title: 'Thông báo', href: '/admin/modules/system/notifications', icon: Bell },
+      { title: 'Bảo mật', href: '/admin/modules/system/security', icon: Shield },
+      { title: 'Backup & Restore', href: '/admin/modules/system/backup', icon: FileText }
     ]
   },
   {
     title: 'Bản đồ & Vị trí',
-    icon: faMap,
+    icon: Map,
     href: '/admin/map',
     description: 'Quản lý bản đồ và vị trí'
   },
   {
     title: 'Ví điện tử',
-    icon: faWallet,
+    icon: Wallet,
     href: '/admin/wallet',
     description: 'Quản lý ví điện tử và giao dịch'
   },
   {
     title: 'Hỗ trợ',
-    icon: faQuestionCircle,
+    icon: HelpCircle,
     href: '/admin/support',
     description: 'Hỗ trợ khách hàng và xử lý khiếu nại'
   }
@@ -167,7 +168,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
             onClick={() => setSidebarOpen(false)}
             className="lg:hidden p-2 rounded-md text-gray-400 hover:text-gray-600"
           >
-            <FontAwesomeIcon icon={faTimes} className="w-5 h-5" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
@@ -185,16 +186,14 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
                     }`}
                   >
                     <div className="flex items-center space-x-3">
-                      <FontAwesomeIcon 
-                        icon={item.icon} 
-                        className={`w-5 h-5 ${isActive(item.href) ? 'text-orange-600' : 'text-gray-400'}`} 
-                      />
+                      <item.icon className={`w-5 h-5 ${isActive(item.href) ? 'text-orange-600' : 'text-gray-400'}`} />
                       <span>{item.title}</span>
                     </div>
-                    <FontAwesomeIcon 
-                      icon={expandedItems.includes(item.title) ? faTimes : faBars}
-                      className="w-4 h-4 text-gray-400"
-                    />
+                    {expandedItems.includes(item.title) ? (
+                      <ChevronUp className="w-4 h-4 text-gray-400" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-gray-400" />
+                    )}
                   </div>
                 ) : (
                   <Link
@@ -207,8 +206,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
                     }`}
                   >
                     <div className="flex items-center space-x-3">
-                      <FontAwesomeIcon 
-                        icon={item.icon} 
+                      <item.icon 
                         className={`w-5 h-5 ${isActive(item.href) ? 'text-orange-600' : 'text-gray-400'}`} 
                       />
                       <span>{item.title}</span>
@@ -229,8 +227,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
                             : 'text-gray-600 hover:bg-gray-50'
                         }`}
                       >
-                        <FontAwesomeIcon 
-                          icon={child.icon} 
+                        <child.icon 
                           className="w-4 h-4 text-gray-400" 
                         />
                         <span>{child.title}</span>
@@ -247,7 +244,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
         <div className="p-4 border-t border-gray-200 flex-shrink-0">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center">
-              <FontAwesomeIcon icon={faUser} className="w-4 h-4 text-white" />
+              <UserIcon className="w-4 h-4 text-white" />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">
@@ -262,7 +259,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
               className="p-1 text-gray-400 hover:text-red-600 transition-colors"
               title="Đăng xuất"
             >
-              <FontAwesomeIcon icon={faSignOutAlt} className="w-4 h-4" />
+              <LogOut className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -277,7 +274,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
               onClick={() => setSidebarOpen(true)}
               className="lg:hidden p-2 rounded-md text-gray-400 hover:text-gray-600"
             >
-              <FontAwesomeIcon icon={faBars} className="w-5 h-5" />
+              <Menu className="w-5 h-5" />
             </button>
             
             <div className="flex items-center space-x-4">
@@ -293,7 +290,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
 
             <div className="flex items-center space-x-4">
               <button className="p-2 text-gray-400 hover:text-gray-600">
-                <FontAwesomeIcon icon={faBell} className="w-5 h-5" />
+                <Bell className="w-5 h-5" />
               </button>
                 <div className="flex items-center space-x-3">
                 <div className="text-right hidden sm:block">
@@ -309,7 +306,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
                   className="p-2 text-gray-400 hover:text-red-600 transition-colors"
                   title="Đăng xuất"
                 >
-                  <FontAwesomeIcon icon={faSignOutAlt} className="w-4 h-4" />
+                  <LogOut className="w-4 h-4" />
                 </button>
               </div>
             </div>

@@ -148,7 +148,12 @@ export class RestaurantService {
         deliveryTime: 1,
         category: 1,
         isOpen: 1,
-        createdAt: 1
+        createdAt: 1,
+        ward: 1,
+        district: 1,
+        city: 1,
+        latitude: 1,
+        longitude: 1,
       })
       .sort({ createdAt: -1 })
       .limit(limit)
@@ -157,9 +162,15 @@ export class RestaurantService {
     // Không trả demo khi rỗng; để FE xử lý empty state
     return docs.map((d: any) => ({
       id: String(d._id),
+      _id: String(d._id),
       name: d.name || 'Chưa thiết lập tên',
       description: d.description || 'Chưa có mô tả',
       address: d.address || 'Chưa thiết lập địa chỉ',
+      ward: d.ward,
+      district: d.district,
+      city: d.city,
+      latitude: d.latitude,
+      longitude: d.longitude,
       imageUrl: d.imageUrl || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400',
       rating: d.rating || 0,
       deliveryTime: d.deliveryTime || '30-45 phút',
@@ -205,6 +216,12 @@ export class RestaurantService {
         rating: 1,
         deliveryFee: 1,
         isOpen: 1,
+        address: 1,
+        ward: 1,
+        district: 1,
+        city: 1,
+        latitude: 1,
+        longitude: 1,
       });
       if (main === 'highRated') {
         query = query.sort({ rating: -1, createdAt: -1 });
@@ -240,6 +257,12 @@ export class RestaurantService {
           rating: r.rating,
           deliveryFee: r.deliveryFee,
           isOpen: r.isOpen,
+          address: r.address,
+          ward: r.ward,
+          district: r.district,
+          city: r.city,
+          latitude: r.latitude,
+          longitude: r.longitude,
         }))
       });
     }
@@ -288,6 +311,7 @@ export class RestaurantService {
       openDays: (d as any).openDays,
       latitude: (d as any).latitude,
       longitude: (d as any).longitude,
+      imageUrl: (d as any).imageUrl,
     };
   }
 

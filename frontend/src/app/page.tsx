@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import FooterCustomer from "@/components/FooterCustomer";
+import { Shield, User, Utensils, Bike, Rocket, CreditCard, ArrowRight } from "lucide-react";
 
 export default function LandingPage() {
   const actors = [
     {
       title: "Admin",
       description: "Quản lý hệ thống, nhà hàng, tài xế và đơn hàng",
-      icon: "👨‍💼",
+      icon: Shield,
       href: "/admin",
       color: "from-purple-500 to-indigo-600",
       bgColor: "bg-purple-50",
@@ -17,7 +18,7 @@ export default function LandingPage() {
     {
       title: "Khách hàng",
       description: "Đặt món ăn, theo dõi đơn hàng và quản lý hồ sơ",
-      icon: "👤",
+      icon: User,
       href: "/customer",
       color: "from-orange-500 to-red-600",
       bgColor: "bg-orange-50",
@@ -26,7 +27,7 @@ export default function LandingPage() {
     {
       title: "Nhà hàng",
       description: "Quản lý thực đơn, đơn hàng và thống kê doanh thu",
-      icon: "🍽️",
+      icon: Utensils,
       href: "/restaurant",
       color: "from-green-500 to-teal-600",
       bgColor: "bg-green-50",
@@ -35,7 +36,7 @@ export default function LandingPage() {
     {
       title: "Tài xế",
       description: "Nhận đơn hàng, cập nhật trạng thái và quản lý thu nhập",
-      icon: "🛵",
+      icon: Bike,
       href: "/driver",
       color: "from-blue-500 to-cyan-600",
       bgColor: "bg-blue-50",
@@ -48,7 +49,7 @@ export default function LandingPage() {
       {/* Header removed per request */}
 
       {/* Hero Section */}
-      <section className="py-16">
+      <section className="pt-16 pb-8">
         <div className="container mx-auto px-4 text-center">
           <h2 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
             Chào mừng đến với
@@ -62,7 +63,7 @@ export default function LandingPage() {
       </section>
 
       {/* Actor Selection */}
-      <section className="py-12">
+      <section className="pt-8 pb-12">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
             <h3 className="text-3xl font-bold text-gray-900 mb-4">
@@ -87,7 +88,7 @@ export default function LandingPage() {
                 <div className="relative p-8 text-center">
                   {/* Icon */}
                   <div className={`w-20 h-20 ${actor.bgColor} rounded-2xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform duration-300`}>
-                    <span className="text-4xl">{actor.icon}</span>
+                    <actor.icon size={36} strokeWidth={1.75} className={actor.textColor} />
                   </div>
                   
                   {/* Title */}
@@ -103,9 +104,7 @@ export default function LandingPage() {
                   {/* Button */}
                   <div className={`inline-flex items-center px-6 py-3 bg-gradient-to-r ${actor.color} text-white rounded-xl font-medium hover:shadow-lg transition-all duration-300 transform group-hover:scale-105`}>
                     <span className="mr-2">Truy cập</span>
-                    <svg className="w-4 h-4 transform group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
+                    <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1 transition-transform duration-300" />
                   </div>
                 </div>
 
@@ -132,7 +131,7 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
             <div className="text-center">
               <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-3xl">🚀</span>
+                <Rocket className="w-7 h-7 text-orange-600" />
               </div>
               <h4 className="text-xl font-bold text-gray-900 mb-2">
                 Giao hàng nhanh
@@ -144,7 +143,7 @@ export default function LandingPage() {
             
             <div className="text-center">
               <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-3xl">🍽️</span>
+                <Utensils className="w-7 h-7 text-orange-600" />
               </div>
               <h4 className="text-xl font-bold text-gray-900 mb-2">
                 Món ăn đa dạng
@@ -156,7 +155,7 @@ export default function LandingPage() {
             
             <div className="text-center">
               <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-3xl">💳</span>
+                <CreditCard className="w-7 h-7 text-orange-600" />
               </div>
               <h4 className="text-xl font-bold text-gray-900 mb-2">
                 Thanh toán tiện lợi

@@ -19,6 +19,12 @@ export interface FeaturedCollection {
     deliveryFee?: number;
     isOpen?: boolean;
     description?: string;
+    address?: string;
+    ward?: string;
+    district?: string;
+    city?: string;
+    latitude?: number;
+    longitude?: number;
   }>;
 }
 

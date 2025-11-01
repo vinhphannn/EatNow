@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CustomerGuard } from "@/components/guards/AuthGuard";
 import { apiClient } from "@/services/api.client";
 import { useCategoriesByRestaurant } from "@/hooks/useCategories";
+import { useRestaurantDistance } from "@/hooks/useRestaurantDistance";
+import useEmblaCarousel from "embla-carousel-react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowLeft, faStar, faTruck, faUtensils } from "@fortawesome/free-solid-svg-icons";
+import { faArrowLeft, faStar, faTruck, faUtensils, faChevronLeft, faChevronRight } from "@fortawesome/free-solid-svg-icons";
 import { cartService } from "@/services/cart.service";
 import { useToast } from "@/components";
 import { ItemOptionsDialog } from "@/components/ItemOptionsDialog";
@@ -22,6 +24,8 @@ interface RestaurantInfo {
   rating?: number;
   deliveryFee?: number;
   isOpen?: boolean;
+  latitude?: number;
+  longitude?: number;
 }
 
 interface ItemData {
@@ -60,12 +64,21 @@ function RestaurantDetailContent() {
   const [popularItems, setPopularItems] = useState<ItemData[]>([]);
   const [loadingPopular, setLoadingPopular] = useState(true);
   const [activeCategoryId, setActiveCategoryId] = useState<string | undefined>(initialCategory);
+  const categoryRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Options dialog state
   const [showOptionsDialog, setShowOptionsDialog] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ItemData | null>(null);
 
+  // Embla for popular items
+  const [popularItemsEmblaRef, popularItemsEmblaApi] = useEmblaCarousel({ align: 'start', dragFree: true, containScroll: 'trimSnaps' });
+  const popularScrollPrev = useCallback(() => popularItemsEmblaApi && popularItemsEmblaApi.scrollPrev(), [popularItemsEmblaApi]);
+  const popularScrollNext = useCallback(() => popularItemsEmblaApi && popularItemsEmblaApi.scrollNext(), [popularItemsEmblaApi]);
+
   const { data: categories, loading: categoriesLoading } = useCategoriesByRestaurant(restaurantId);
+  
+  // Tính khoảng cách từ user đến restaurant (sử dụng context để tránh gọi API nhiều lần)
+  const distance = useRestaurantDistance(restaurant);
 
   useEffect(() => {
     const loadRestaurant = async () => {
@@ -81,6 +94,8 @@ function RestaurantDetailContent() {
           rating: data?.rating,
           deliveryFee: data?.deliveryFee,
           isOpen: (data as any)?.isOpen,
+          latitude: data?.latitude,
+          longitude: data?.longitude,
         });
       } catch (e) {
         setRestaurant(null);
@@ -117,9 +132,61 @@ function RestaurantDetailContent() {
 
   useEffect(() => {
     if (!restaurantId) return;
-    loadItems(activeCategoryId);
+    // Lấy tất cả items, không lọc theo category nữa
+    loadItems();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [restaurantId, activeCategoryId]);
+  }, [restaurantId]);
+
+  // Nhóm các món ăn theo categoryId
+  const itemsByCategory = useMemo(() => {
+    if (!items || items.length === 0) return {};
+    return items.reduce((acc, item) => {
+      const categoryId = item.categoryId || 'uncategorized';
+      if (!acc[categoryId]) {
+        acc[categoryId] = [];
+      }
+      acc[categoryId].push(item);
+      return acc;
+    }, {} as Record<string, ItemData[]>);
+  }, [items]);
+
+  // Sắp xếp categories theo thứ tự hiển thị
+  const sortedCategories = useMemo(() => {
+    if (!categories) return [];
+    return [...categories].sort((a, b) => (a.position || 0) - (b.position || 0));
+  }, [categories]);
+
+  // Scroll-spy logic
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setActiveCategoryId(entry.target.id);
+          }
+        });
+      },
+      { rootMargin: '-20% 0px -80% 0px' } // Kích hoạt khi section ở gần giữa màn hình
+    );
+
+    const currentRefs = categoryRefs.current;
+    Object.values(currentRefs).forEach((ref) => {
+      if (ref) observer.observe(ref);
+    });
+
+    return () => {
+      Object.values(currentRefs).forEach((ref) => {
+        if (ref) observer.unobserve(ref);
+      });
+    };
+  }, [itemsByCategory]); // Chạy lại khi có items
+
+  const handleCategoryClick = (categoryId: string) => {
+    categoryRefs.current[categoryId]?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    });
+  };
 
   // Load popular items (independent of category)
   useEffect(() => {
@@ -167,8 +234,27 @@ function RestaurantDetailContent() {
           {restaurant.imageUrl ? (
             <img src={restaurant.imageUrl} alt={restaurant.name} className="w-full h-full object-cover" />
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-gray-300">
-              <FontAwesomeIcon icon={faUtensils} className="text-5xl" />
+            <div className="w-full h-full bg-gradient-to-br from-orange-500 via-orange-400 to-red-500 flex flex-col items-center justify-center relative overflow-hidden">
+              <div className="absolute inset-0 opacity-10">
+                <div className="absolute top-0 left-0 w-full h-full" style={{
+                  backgroundImage: `radial-gradient(circle at 2px 2px, white 1px, transparent 0)`,
+                  backgroundSize: '24px 24px'
+                }}></div>
+              </div>
+              <div className="relative z-10 flex flex-col items-center">
+                <div className="relative">
+                  <div className="w-24 h-24 bg-white rounded-2xl flex items-center justify-center shadow-lg">
+                    <span className="text-transparent bg-clip-text bg-gradient-to-br from-orange-500 to-red-500 text-5xl font-extrabold">E</span>
+                  </div>
+                  <div className="absolute inset-0 bg-white opacity-20 rounded-2xl blur-xl"></div>
+                </div>
+                <div className="mt-4 text-center">
+                  <p className="text-white text-sm font-bold tracking-wider drop-shadow-lg">EatNow</p>
+                  <p className="text-white text-xs font-medium opacity-80 mt-1">Nhà hàng</p>
+                </div>
+              </div>
+              <div className="absolute top-2 right-2 w-20 h-20 bg-white bg-opacity-10 rounded-full blur-2xl"></div>
+              <div className="absolute bottom-2 left-2 w-16 h-16 bg-white bg-opacity-10 rounded-full blur-xl"></div>
             </div>
           )}
         </div>
@@ -185,13 +271,15 @@ function RestaurantDetailContent() {
             </div>
             <div className="flex items-center gap-3 text-sm text-gray-700">
               <span className="flex items-center gap-1"><FontAwesomeIcon icon={faStar} className="text-yellow-500" /> {restaurant.rating ?? '4.5'}</span>
-              <span className="flex items-center gap-1"><FontAwesomeIcon icon={faTruck} /> {restaurant.deliveryFee ? `${restaurant.deliveryFee.toLocaleString('vi-VN')}đ` : 'Miễn phí'}</span>
+              {distance && (
+                <span className="flex items-center gap-1"><FontAwesomeIcon icon={faTruck} /> {distance}</span>
+              )}
             </div>
           </div>
         </div>
       </div>
     );
-  }, [loadingRestaurant, restaurant]);
+  }, [loadingRestaurant, restaurant, distance]);
 
   const handleAdd = async (itemId: string) => {
     // Find the item to check if it has options
@@ -310,130 +398,174 @@ function RestaurantDetailContent() {
         {/* Popular items (horizontal scroll) */}
         <div className="mt-6">
           <h2 className="text-xl font-bold text-gray-900 mb-3">Món phổ biến</h2>
-          {loadingPopular ? (
-            <div className="flex gap-4 overflow-hidden">
-              {Array.from({ length: 5 }).map((_, idx) => (
-                <div key={idx} className="min-w-[220px] bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-pulse">
-                  <div className="h-28 bg-gray-200" />
-                  <div className="p-3">
-                    <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
-                    <div className="h-4 bg-gray-200 rounded w-1/2" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : popularItems.length > 0 ? (
-            <div className="flex gap-4 overflow-x-auto pb-2">
-              {popularItems.map((item) => (
-                <div key={item.id} className="min-w-[220px] bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-shadow">
-                  <div className="h-28 bg-gray-100 flex items-center justify-center">
-                    {item.imageUrl ? (
-                      <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <FontAwesomeIcon icon={faUtensils} className="text-2xl text-gray-400" />
-                    )}
-                  </div>
-                  <div className="p-3">
-                    <h3 className="font-semibold text-gray-900 mb-1 truncate">{item.name}</h3>
-                    <div className="flex items-center justify-between">
-                      <span className="text-orange-600 font-bold text-sm">{item.price?.toLocaleString('vi-VN')}đ</span>
-                      <button
-                        onClick={() => handleAdd(item.id)}
-                        disabled={isAddingToCart === item.id}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                          isAddingToCart === item.id 
-                            ? 'bg-gray-400 text-white cursor-not-allowed' 
-                            : 'bg-orange-500 hover:bg-orange-600 text-white'
-                        }`}
-                      >
-                        {isAddingToCart === item.id ? 'Đang thêm...' : 'Thêm'}
-                      </button>
+          <div className="relative">
+            <button
+              aria-label="Scroll left"
+              onClick={popularScrollPrev}
+              className="hidden md:flex absolute -left-3 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-white shadow border border-gray-200 items-center justify-center hover:bg-gray-50"
+            >
+              <FontAwesomeIcon icon={faChevronLeft} className="w-5 h-5 text-gray-700" />
+            </button>
+
+            <div className="overflow-hidden" ref={popularItemsEmblaRef}>
+              {loadingPopular ? (
+                <div className="flex gap-4">
+                  {Array.from({ length: 5 }).map((_, idx) => (
+                    <div key={idx} className="min-w-[220px] bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-pulse">
+                      <div className="h-28 bg-gray-200" />
+                      <div className="p-3">
+                        <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
+                        <div className="h-4 bg-gray-200 rounded w-1/2" />
+                      </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              ) : popularItems.length > 0 ? (
+                <div className="flex gap-4">
+                  {popularItems.map((item) => (
+                    <div key={item.id} className="min-w-[220px] bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-shadow">
+                      <div className="h-28 bg-gray-100 flex items-center justify-center">
+                        {item.imageUrl ? (
+                          <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-br from-orange-400 to-red-400 flex items-center justify-center">
+                            <div className="w-10 h-10 bg-white bg-opacity-20 rounded-lg flex items-center justify-center backdrop-blur-sm">
+                              <span className="text-white text-xl font-bold">E</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-3">
+                        <h3 className="font-semibold text-gray-900 mb-1 truncate">{item.name}</h3>
+                        <div className="flex items-center justify-between">
+                          <span className="text-orange-600 font-bold text-sm">{item.price?.toLocaleString('vi-VN')}đ</span>
+                          <button
+                            onClick={() => handleAdd(item.id)}
+                            disabled={isAddingToCart === item.id}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                              isAddingToCart === item.id 
+                                ? 'bg-gray-400 text-white cursor-not-allowed' 
+                                : 'bg-orange-500 hover:bg-orange-600 text-white'
+                            }`}
+                          >
+                            {isAddingToCart === item.id ? 'Đang thêm...' : 'Thêm'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-gray-500 text-sm">Chưa có món phổ biến</div>
+              )}
             </div>
-          ) : (
-            <div className="text-gray-500 text-sm">Chưa có món phổ biến</div>
-          )}
+
+            <button
+              aria-label="Scroll right"
+              onClick={popularScrollNext}
+              className="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-white shadow border border-gray-200 items-center justify-center hover:bg-gray-50"
+            >
+              <FontAwesomeIcon icon={faChevronRight} className="w-5 h-5 text-gray-700" />
+            </button>
+          </div>
         </div>
 
-        {/* Categories filter */}
-        <div className="mt-6">
-          {categoriesLoading ? (
-            <div className="flex gap-2">
-              {Array.from({ length: 6 }).map((_, idx) => (
-                <div key={idx} className="h-9 w-24 bg-gray-200 rounded-full animate-pulse" />
-              ))}
-            </div>
-          ) : categories && categories.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              <button
-                className={`px-4 py-2 rounded-full border text-sm ${!activeCategoryId ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
-                onClick={() => setActiveCategoryId(undefined)}
-              >
-                Tất cả
-              </button>
-              {categories.map((c: any) => (
+        {/* Sticky Category Navigation */}
+        {sortedCategories && sortedCategories.length > 0 && (
+          <div className="sticky top-[60px] z-40 bg-gray-50 py-3 mb-6 border-b border-gray-200">
+            <div className="flex gap-2 overflow-x-auto pb-2">
+              {sortedCategories.map((c: any) => (
                 <button
                   key={String(c.id || c._id)}
-                  className={`px-4 py-2 rounded-full border text-sm ${activeCategoryId === String(c.id || c._id) ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
-                  onClick={() => setActiveCategoryId(String(c.id || c._id))}
+                  className={`px-4 py-2 rounded-full border text-sm font-medium whitespace-nowrap transition-colors ${
+                    activeCategoryId === String(c.id || c._id)
+                      ? 'bg-orange-500 text-white border-orange-500'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
+                  }`}
+                  onClick={() => handleCategoryClick(String(c.id || c._id))}
                 >
                   {c.name}
                 </button>
               ))}
             </div>
-          ) : null}
-        </div>
+          </div>
+        )}
 
-        {/* Items grid */}
+        {/* Items grouped by category */}
         <div className="mt-6">
           {loadingItems ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {Array.from({ length: 6 }).map((_, idx) => (
-                <div key={idx} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-pulse">
-                  <div className="h-40 bg-gray-200" />
-                  <div className="p-4">
-                    <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
-                    <div className="h-4 bg-gray-200 rounded w-1/2" />
+            <div className="space-y-8">
+              {Array.from({ length: 3 }).map((_, cIdx) => (
+                <div key={cIdx}>
+                  <div className="h-8 bg-gray-200 rounded w-1/3 mb-4 animate-pulse"></div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {Array.from({ length: 3 }).map((_, iIdx) => (
+                      <div key={iIdx} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-pulse">
+                        <div className="h-40 bg-gray-200" />
+                        <div className="p-4">
+                          <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
+                          <div className="h-4 bg-gray-200 rounded w-1/2" />
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
             </div>
-          ) : items.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {items.map((item) => (
-                <div key={item.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-shadow">
-                  <div className="h-40 bg-gray-100 flex items-center justify-center">
-                    {item.imageUrl ? (
-                      <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <FontAwesomeIcon icon={faUtensils} className="text-3xl text-gray-400" />
-                    )}
-                  </div>
-                  <div className="p-4">
-                    <h3 className="font-semibold text-gray-900 mb-2">{item.name}</h3>
-                    {item.description && (
-                      <p className="text-gray-600 text-sm mb-3 line-clamp-2">{item.description}</p>
-                    )}
-                    <div className="flex items-center justify-between">
-                      <span className="text-orange-600 font-bold">{item.price?.toLocaleString('vi-VN')}đ</span>
-                      <button
-                        onClick={() => handleAdd(item.id)}
-                        disabled={isAddingToCart === item.id}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                          isAddingToCart === item.id 
-                            ? 'bg-gray-400 text-white cursor-not-allowed' 
-                            : 'bg-orange-500 hover:bg-orange-600 text-white'
-                        }`}
-                      >
-                        {isAddingToCart === item.id ? 'Đang thêm...' : 'Thêm'}
-                      </button>
+          ) : sortedCategories && sortedCategories.length > 0 ? (
+            <div className="space-y-10">
+              {sortedCategories.map((category: any) => {
+                const categoryId = String(category.id || category._id);
+                const categoryItems = itemsByCategory[categoryId];
+                if (!categoryItems || categoryItems.length === 0) return null;
+
+                return (
+                  <div
+                    key={categoryId}
+                    id={categoryId}
+                    ref={(el) => (categoryRefs.current[categoryId] = el)}
+                  >
+                    <h2 className="text-2xl font-bold text-gray-900 mb-4 pt-4">{category.name}</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {categoryItems.map((item) => (
+                        <div key={item.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-shadow">
+                          <div className="h-40 bg-gray-100 flex items-center justify-center">
+                            {item.imageUrl ? (
+                              <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full bg-gradient-to-br from-orange-400 to-red-400 flex items-center justify-center">
+                                <div className="w-12 h-12 bg-white bg-opacity-20 rounded-lg flex items-center justify-center backdrop-blur-sm">
+                                  <span className="text-white text-2xl font-bold">E</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          <div className="p-4">
+                            <h3 className="font-semibold text-gray-900 mb-2">{item.name}</h3>
+                            {item.description && (
+                              <p className="text-gray-600 text-sm mb-3 line-clamp-2">{item.description}</p>
+                            )}
+                            <div className="flex items-center justify-between">
+                              <span className="text-orange-600 font-bold">{item.price?.toLocaleString('vi-VN')}đ</span>
+                              <button
+                                onClick={() => handleAdd(item.id)}
+                                disabled={isAddingToCart === item.id}
+                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                  isAddingToCart === item.id 
+                                    ? 'bg-gray-400 text-white cursor-not-allowed' 
+                                    : 'bg-orange-500 hover:bg-orange-600 text-white'
+                                }`}
+                              >
+                                {isAddingToCart === item.id ? 'Đang thêm...' : 'Thêm'}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="text-center text-gray-500 py-12">Chưa có món nào</div>

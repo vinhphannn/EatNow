@@ -10,6 +10,7 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/driver/register') ||
     pathname.startsWith('/customer/login') ||
     pathname.startsWith('/customer/register') ||
+    pathname.startsWith('/customer/home') ||
     pathname.startsWith('/restaurant/login') ||
     pathname.startsWith('/restaurant/register') ||
     pathname.startsWith('/admin/login')
