@@ -61,8 +61,7 @@ function RestaurantDetailContent() {
   const [loadingRestaurant, setLoadingRestaurant] = useState(true);
   const [items, setItems] = useState<ItemData[]>([]);
   const [loadingItems, setLoadingItems] = useState(true);
-  const [popularItems, setPopularItems] = useState<ItemData[]>([]);
-  const [loadingPopular, setLoadingPopular] = useState(true);
+
   const [activeCategoryId, setActiveCategoryId] = useState<string | undefined>(initialCategory);
   const categoryRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -93,7 +92,7 @@ function RestaurantDetailContent() {
           imageUrl: data?.imageUrl,
           rating: data?.rating,
           deliveryFee: data?.deliveryFee,
-          isOpen: (data as any)?.isOpen,
+          isOpen: data?.status === 'active',
           latitude: data?.latitude,
           longitude: data?.longitude,
         });
@@ -150,6 +149,13 @@ function RestaurantDetailContent() {
     }, {} as Record<string, ItemData[]>);
   }, [items]);
 
+  const popularItems = useMemo(() => {
+    if (!items || items.length === 0) return [];
+    // Sort by rating -> reviewCount -> popularityScore
+    const sorted = [...items].sort((a: any, b: any) => (b.rating || 0) - (a.rating || 0) || (b.reviewCount || 0) - (a.reviewCount || 0) || (b.popularityScore || 0) - (a.popularityScore || 0));
+    return sorted.slice(0, 10);
+  }, [items]);
+
   // Sắp xếp categories theo thứ tự hiển thị
   const sortedCategories = useMemo(() => {
     if (!categories) return [];
@@ -188,38 +194,7 @@ function RestaurantDetailContent() {
     });
   };
 
-  // Load popular items (independent of category)
-  useEffect(() => {
-    const loadPopular = async () => {
-      if (!restaurantId) return;
-      try {
-        setLoadingPopular(true);
-        const data: any = await apiClient.get(`/api/v1/restaurants/${restaurantId}/items?limit=100`);
-        const mapped = Array.isArray(data)
-          ? data.map((d: any) => ({ 
-              id: d.id || d._id, 
-              name: d.name, 
-              price: d.price, 
-              imageUrl: d.imageUrl, 
-              description: d.description, 
-              categoryId: d.categoryId, 
-              rating: d.rating, 
-              reviewCount: d.reviewCount, 
-              popularityScore: d.popularityScore,
-              options: d.options || []
-            }))
-          : [];
-        // Sort by rating -> reviewCount -> popularityScore
-        const sorted = mapped.sort((a: any, b: any) => (b.rating || 0) - (a.rating || 0) || (b.reviewCount || 0) - (a.reviewCount || 0) || (b.popularityScore || 0) - (a.popularityScore || 0));
-        setPopularItems(sorted.slice(0, 10));
-      } catch (e) {
-        setPopularItems([]);
-      } finally {
-        setLoadingPopular(false);
-      }
-    };
-    loadPopular();
-  }, [restaurantId]);
+
 
   const header = useMemo(() => {
     if (loadingRestaurant) {
@@ -261,7 +236,14 @@ function RestaurantDetailContent() {
         <div className="p-4">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{restaurant.name}</h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-bold text-gray-900">{restaurant.name}</h1>
+                {restaurant.isOpen ? (
+                  <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">Đang mở cửa</span>
+                ) : (
+                  <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-medium rounded-full">Đã đóng cửa</span>
+                )}
+              </div>
               {restaurant.description && (
                 <p className="text-gray-600 mt-1 max-w-3xl">{restaurant.description}</p>
               )}
@@ -300,15 +282,7 @@ function RestaurantDetailContent() {
       setIsAddingToCart(itemId);
       console.log('Adding to cart:', { restaurantId, itemId, selectedOptions });
       
-      // Test auth first - use a simple endpoint
-      try {
-        const authTest = await apiClient.get('/api/v1/auth/me');
-        console.log('Auth test result:', authTest);
-      } catch (authError) {
-        console.error('Auth test failed:', authError);
-        showToast('Bạn cần đăng nhập để thêm vào giỏ hàng', 'error');
-        return;
-      }
+
       
       const result = await cartService.addToCart(restaurantId, { itemId, quantity: 1, options: selectedOptions }, 'cookie-auth');
       console.log('Add to cart result:', result);
@@ -408,7 +382,7 @@ function RestaurantDetailContent() {
             </button>
 
             <div className="overflow-hidden" ref={popularItemsEmblaRef}>
-              {loadingPopular ? (
+              {loadingItems ? (
                 <div className="flex gap-4">
                   {Array.from({ length: 5 }).map((_, idx) => (
                     <div key={idx} className="min-w-[220px] bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-pulse">
@@ -441,7 +415,7 @@ function RestaurantDetailContent() {
                           <span className="text-orange-600 font-bold text-sm">{item.price?.toLocaleString('vi-VN')}đ</span>
                           <button
                             onClick={() => handleAdd(item.id)}
-                            disabled={isAddingToCart === item.id}
+                            disabled={!restaurant?.isOpen || isAddingToCart === item.id}
                             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                               isAddingToCart === item.id 
                                 ? 'bg-gray-400 text-white cursor-not-allowed' 
@@ -549,7 +523,7 @@ function RestaurantDetailContent() {
                               <span className="text-orange-600 font-bold">{item.price?.toLocaleString('vi-VN')}đ</span>
                               <button
                                 onClick={() => handleAdd(item.id)}
-                                disabled={isAddingToCart === item.id}
+                                disabled={!restaurant?.isOpen || isAddingToCart === item.id}
                                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                                   isAddingToCart === item.id 
                                     ? 'bg-gray-400 text-white cursor-not-allowed' 

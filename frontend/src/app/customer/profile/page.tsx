@@ -7,6 +7,8 @@ import { apiClient } from "@/services/api.client";
 import { useToast } from "@/components";
 import { useCustomerAuth } from "@/contexts/AuthContext";
 import { useDeliveryAddress } from "@/contexts/DeliveryAddressContext";
+import { RestaurantCard } from '@/components';
+import { useFavorites } from '@/contexts/FavoritesContext';
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faMapMarkerAlt, faWallet, faHeart, faUser, faEdit, faTrash, faPlus, faStar, faPhone, faStickyNote, faSignOutAlt } from "@fortawesome/free-solid-svg-icons";
 
@@ -42,6 +44,9 @@ export default function CustomerProfilePage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'addresses' | 'wallet' | 'favorites'>('addresses');
   const [loading, setLoading] = useState(true);
+  const [showAddressForm, setShowAddressForm] = useState(false);
+  const [editingAddressIndex, setEditingAddressIndex] = useState<number | null>(null);
+  const [customLabel, setCustomLabel] = useState("");
   
   // Address management
   const [addresses, setAddresses] = useState<AddressForm[]>([]);
@@ -78,27 +83,7 @@ export default function CustomerProfilePage() {
     }
   };
 
-  // Cập nhật form khi có vị trí từ context
-  useEffect(() => {
-    if (userLocation && !form.latitude && !form.longitude) {
-      setForm(prev => ({
-        ...prev,
-        latitude: userLocation.latitude,
-        longitude: userLocation.longitude,
-      }));
 
-      // Tự động điền địa chỉ nếu trường địa chỉ trống
-      if (!form.addressLine) {
-        getAddressFromCoordinates(userLocation.latitude, userLocation.longitude).then(generatedAddress => {
-          if (generatedAddress) {
-            setForm(prev => ({ ...prev, addressLine: generatedAddress }));
-            showToast('Đã tự động điền vị trí và địa chỉ của bạn', 'success');
-          }
-        });
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userLocation]);
   
   // Favorites management
   const [favoriteRestaurants, setFavoriteRestaurants] = useState<FavoriteRestaurant[]>([]);
@@ -123,9 +108,16 @@ export default function CustomerProfilePage() {
         
         // Load wallet info
         try {
-          const wallet = await apiClient.get<any>(`/api/v1/customer/wallet/balance`);
-          setWalletInfo({ balance: wallet.balance || 0, transactions: wallet.transactions || [] });
+          const [walletRes, transactionsRes] = await Promise.all([
+            apiClient.get<any>(`/api/v1/customer/wallet/balance`),
+            apiClient.get<any[]>(`/api/v1/customer/wallet/transactions?limit=10`)
+          ]);
+          setWalletInfo({ 
+            balance: walletRes.balance || 0, 
+            transactions: transactionsRes || [] 
+          });
         } catch (e) {
+          console.error('Could not load wallet info:', e);
           // Wallet not available
         }
         
@@ -358,9 +350,20 @@ export default function CustomerProfilePage() {
 
 
   const handleSave = async () => {
+    const isEditing = editingAddressIndex !== null;
+
     try {
-      if (!form.label.trim() || !form.phone.trim() || !/^0\d{9,10}$/.test(form.phone.trim())) {
-        showToast('Vui lòng nhập đầy đủ nhãn và số điện thoại hợp lệ', 'error');
+      // Improved validation
+      if (form.label === 'Khác' && !customLabel.trim()) {
+        showToast('Vui lòng nhập nhãn tùy chỉnh.', 'error');
+        return;
+      }
+      if (!form.phone.trim()) {
+        showToast('Vui lòng nhập số điện thoại.', 'error');
+        return;
+      }
+      if (!/^0\d{9,10}$/.test(form.phone.trim())) {
+        showToast('Số điện thoại không hợp lệ. Vui lòng kiểm tra lại.', 'error');
         return;
       }
       if (typeof form.latitude !== 'number' || typeof form.longitude !== 'number') {
@@ -397,8 +400,10 @@ export default function CustomerProfilePage() {
           return;
         }
         
+        const finalLabel = form.label === 'Khác' ? customLabel : form.label;
+
         const addressData = {
-          label: form.label,
+          label: finalLabel,
           phone: form.phone,
           addressLine: finalAddressLine,
           note: form.note,
@@ -408,10 +413,16 @@ export default function CustomerProfilePage() {
           isDefault: Boolean(form.isDefault)
         };
       
-      const response = await apiClient.post(`/api/v1/customer/addresses`, addressData);
-      // Address saved successfully
+      if (isEditing) {
+        await apiClient.put(`/api/v1/customer/addresses/${editingAddressIndex}`, addressData);
+        showToast('Đã cập nhật địa chỉ thành công', 'success');
+      } else {
+        await apiClient.post(`/api/v1/customer/addresses`, addressData);
+        showToast('Đã thêm địa chỉ thành công', 'success');
+      }
       
-      showToast('Đã lưu địa chỉ thành công', 'success');
+      setShowAddressForm(false);
+      setEditingAddressIndex(null);
       
       // Reset form
       setForm({ label: "Nhà", phone: "", addressLine: "", note: "", recipientName: "", latitude: undefined, longitude: undefined, isDefault: false });
@@ -426,35 +437,9 @@ export default function CustomerProfilePage() {
     }
   };
 
-  // Wallet functions
-  const handleTopUp = async (amount: number) => {
-    try {
-      await apiClient.post(`/api/v1/wallet/topup`, { amount });
-      showToast(`Đã nạp ${amount.toLocaleString()}đ vào ví`, 'success');
-      
-      // Reload wallet
-      const wallet = await apiClient.get<any>(`/api/v1/wallet/balance`);
-      setWalletInfo({ balance: wallet.balance || 0, transactions: wallet.transactions || [] });
-    } catch (e) {
-      console.error('Error topping up wallet:', e);
-      showToast('Không thể nạp tiền vào ví', 'error');
-    }
-  };
 
-  // Favorites functions
-  const handleRemoveFavorite = async (restaurantId: string) => {
-    try {
-      await apiClient.delete(`/api/v1/customer/favorites/${restaurantId}`);
-      showToast('Đã xóa khỏi danh sách yêu thích', 'success');
-      
-      // Reload favorites
-      const favorites = await apiClient.get<any>(`/api/v1/customer/favorites`);
-      setFavoriteRestaurants(favorites || []);
-    } catch (e) {
-      console.error('Error removing favorite:', e);
-      showToast('Không thể xóa khỏi danh sách yêu thích', 'error');
-    }
-  };
+
+
 
   // Logout function
   const handleLogout = async () => {
@@ -505,21 +490,7 @@ export default function CustomerProfilePage() {
         </button>
       </div>
 
-      {/* Wallet Quick Action */}
-      <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl p-4 mb-6 text-white">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm opacity-90">Ví của tôi</p>
-            <p className="text-2xl font-bold">{walletInfo.balance.toLocaleString('vi-VN')} VND</p>
-          </div>
-          <Link
-            href="/customer/wallet"
-            className="bg-white text-blue-600 px-4 py-2 rounded-lg font-semibold hover:bg-blue-50 transition"
-          >
-            Xem chi tiết →
-          </Link>
-        </div>
-      </div>
+
 
       {/* Tab Navigation */}
       <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg mb-8">
@@ -563,22 +534,68 @@ export default function CustomerProfilePage() {
             <div>
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-semibold text-gray-900">Địa chỉ của tôi</h2>
-            </div>
+            <button
+              onClick={() => {
+                setEditingAddressIndex(null);
+                const newForm = { 
+                  label: "Nhà", 
+                  phone: "", 
+                  addressLine: "", 
+                  note: "", 
+                  recipientName: user?.name || "", 
+                  latitude: userLocation?.latitude,
+                  longitude: userLocation?.longitude,
+                  isDefault: false 
+                };
+                setForm(newForm);
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Form */}
-            <div className="bg-white rounded-xl border p-6 space-y-4">
+                if (userLocation) {
+                  getAddressFromCoordinates(userLocation.latitude, userLocation.longitude).then(generatedAddress => {
+                    if (generatedAddress) {
+                      setForm(prev => ({ ...prev, addressLine: generatedAddress }));
+                      showToast('Đã tự động điền vị trí và địa chỉ của bạn', 'success');
+                    }
+                  });
+                }
+
+                setShowAddressForm(true);
+              }}
+              className="bg-orange-500 text-white py-2 px-4 rounded-lg hover:bg-orange-600 transition-colors"
+            >
+              Thêm địa chỉ mới
+            </button>
+          </div>
+
+          {showAddressForm && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Form */}
+              <div className="bg-white rounded-xl border p-6 space-y-4">
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nhãn *</label>
                 <select 
                   value={form.label} 
-                  onChange={(e) => setForm({...form, label: e.target.value})} 
+                  onChange={(e) => {
+                    const newLabel = e.target.value;
+                    setForm({...form, label: newLabel});
+                    if (newLabel !== 'Khác') {
+                      setCustomLabel("");
+                    }
+                  }}
                   className="w-full rounded-lg border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500" 
                 >
                   {addressLabels.map((label) => (
                     <option key={label} value={label}>{label}</option>
-                ))}
-              </select>
+                  ))}
+                </select>
+                {form.label === 'Khác' && (
+                  <input 
+                    type="text"
+                    value={customLabel}
+                    onChange={(e) => setCustomLabel(e.target.value)}
+                    className="mt-2 w-full rounded-lg border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500" 
+                    placeholder="Nhập nhãn tùy chỉnh"
+                  />
+                )}
             </div>
               
             <div>
@@ -632,12 +649,20 @@ export default function CustomerProfilePage() {
                 <label className="ml-2 text-sm text-gray-700">Đặt làm địa chỉ mặc định</label>
             </div>
               
-              <button 
-                onClick={handleSave}
-                className="w-full bg-orange-500 text-white py-2 px-4 rounded-lg hover:bg-orange-600 transition-colors"
-              >
-                Lưu địa chỉ
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowAddressForm(false)}
+                  className="w-full bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300 transition-colors"
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={handleSave}
+                  className="w-full bg-orange-500 text-white py-2 px-4 rounded-lg hover:bg-orange-600 transition-colors"
+                >
+                  {editingAddressIndex !== null ? 'Cập nhật địa chỉ' : 'Lưu địa chỉ'}
+                </button>
+              </div>
             </div>
 
             {/* Map */}
@@ -655,6 +680,7 @@ export default function CustomerProfilePage() {
               )}
             </div>
           </div>
+          )}
 
           {/* Address List */}
           <div className="mt-8">
@@ -742,8 +768,9 @@ export default function CustomerProfilePage() {
                       <div className="flex flex-col gap-1 ml-3">
                 <button
                           onClick={() => {
+                            const isCustomLabel = !addressLabels.includes(a.label);
                             setForm({
-                              label: a.label,
+                              label: isCustomLabel ? 'Khác' : a.label,
                               phone: a.phone,
                               addressLine: a.addressLine,
                               note: a.note || '',
@@ -752,21 +779,17 @@ export default function CustomerProfilePage() {
                               longitude: a.longitude,
                               isDefault: a.isDefault
                             });
-                            // Focus on map to show location
-                            if (mapRef.current && (mapRef.current as any)._map) {
-                              const map = (mapRef.current as any)._map;
-                              if (a.latitude && a.longitude) {
-                                map.setView([a.latitude, a.longitude], 15);
-                                if (markerRef.current) {
-                                  map.removeLayer(markerRef.current);
-                                }
-                                markerRef.current = (window as any).L.marker([a.latitude, a.longitude]).addTo(map);
-                              }
+                            if (isCustomLabel) {
+                              setCustomLabel(a.label);
+                            } else {
+                              setCustomLabel('');
                             }
+                            setEditingAddressIndex(idx);
+                            setShowAddressForm(true);
                           }}
                           className="text-blue-600 hover:text-blue-800 text-xs px-2 py-1 rounded hover:bg-blue-50 transition-colors"
                         >
-                          Xem trên bản đồ
+                          Chỉnh sửa
                 </button>
                 <button
                           onClick={async () => {
@@ -808,45 +831,14 @@ export default function CustomerProfilePage() {
 
           <div className="bg-white rounded-xl border p-6 mb-6">
             <div className="flex items-center justify-between mb-4">
-        <div>
+              <div>
                 <h3 className="text-lg font-semibold text-gray-900">Số dư hiện tại</h3>
-                <p className="text-3xl font-bold text-orange-600">{walletInfo.balance.toLocaleString()}đ</p>
+                <p className="text-3xl font-bold text-orange-600">{walletInfo.balance.toLocaleString('vi-VN')}đ</p>
               </div>
-              <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center">
-                <FontAwesomeIcon icon={faWallet} className="text-2xl text-orange-600" />
-          </div>
-        </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => handleTopUp(50000)}
-                className="p-3 border border-gray-200 rounded-lg hover:border-orange-300 hover:bg-orange-50 transition-colors"
-              >
-                <div className="text-sm text-gray-600">Nạp</div>
-                <div className="font-semibold">50.000đ</div>
-              </button>
-              <button
-                onClick={() => handleTopUp(100000)}
-                className="p-3 border border-gray-200 rounded-lg hover:border-orange-300 hover:bg-orange-50 transition-colors"
-              >
-                <div className="text-sm text-gray-600">Nạp</div>
-                <div className="font-semibold">100.000đ</div>
-              </button>
-              <button
-                onClick={() => handleTopUp(200000)}
-                className="p-3 border border-gray-200 rounded-lg hover:border-orange-300 hover:bg-orange-50 transition-colors"
-              >
-                <div className="text-sm text-gray-600">Nạp</div>
-                <div className="font-semibold">200.000đ</div>
-              </button>
-          <button
-                onClick={() => handleTopUp(500000)}
-                className="p-3 border border-gray-200 rounded-lg hover:border-orange-300 hover:bg-orange-50 transition-colors"
-          >
-                <div className="text-sm text-gray-600">Nạp</div>
-                <div className="font-semibold">500.000đ</div>
-          </button>
-        </div>
+              <Link href="/customer/wallet" className="bg-orange-500 text-white py-2 px-4 rounded-lg hover:bg-orange-600 transition-colors">
+                Quản lý ví
+              </Link>
+            </div>
           </div>
           
           <div className="bg-white rounded-xl border p-6">
@@ -901,40 +893,13 @@ export default function CustomerProfilePage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {favoriteRestaurants.map((restaurant) => (
-                <div key={restaurant._id} className="bg-white rounded-xl border overflow-hidden hover:shadow-lg transition-shadow">
-                  <div className="aspect-video bg-gray-200 relative">
-                    {restaurant.imageUrl ? (
-                      <img
-                        src={restaurant.imageUrl}
-                        alt={restaurant.name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <FontAwesomeIcon icon={faHeart} className="text-3xl text-gray-400" />
-                      </div>
-                    )}
-                    <button
-                      onClick={() => handleRemoveFavorite(restaurant._id)}
-                      className="absolute top-2 right-2 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-md hover:bg-red-50 transition-colors"
-                    >
-                      <FontAwesomeIcon icon={faTrash} className="text-red-500 text-sm" />
-                    </button>
-                  </div>
-                  <div className="p-4">
-                    <h3 className="font-semibold text-gray-900 mb-1">{restaurant.name}</h3>
-                    <p className="text-sm text-gray-600 mb-2">{restaurant.address}</p>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-500">{restaurant.cuisine}</span>
-                      <div className="flex items-center gap-1">
-                        <FontAwesomeIcon icon={faStar} className="text-yellow-400 text-sm" />
-                        <span className="text-sm font-medium">{restaurant.rating}</span>
-                      </div>
-                    </div>
-                  </div>
-              </div>
-            ))}
-          </div>
+                <RestaurantCard
+                  key={restaurant._id}
+                  restaurant={restaurant}
+                  showDistance={false} // Hide distance for a cleaner look in favorites
+                />
+              ))}
+            </div>
           )}
         </div>
       )}

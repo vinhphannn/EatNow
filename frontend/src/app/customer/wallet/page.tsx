@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { walletService, WalletBalance, WalletTransaction } from '@/services/wallet.service';
 import { useCustomerAuth } from '@/contexts/AuthContext';
 import QRCode from 'qrcode';
+import { useDepositListener } from '@/hooks/usePaymentSocket';
 
 export default function WalletPage() {
   const { user } = useCustomerAuth();
@@ -22,24 +23,30 @@ export default function WalletPage() {
   const [depositStep, setDepositStep] = useState<'amount' | 'qr'>('amount');
   const [currentTransactionId, setCurrentTransactionId] = useState<string>('');
   const [forceUpdate, setForceUpdate] = useState(0); // Force re-render
-  const [isPolling, setIsPolling] = useState(false);
-  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
   const [hasWallet, setHasWallet] = useState<boolean | null>(null); // null = chưa check, true/false = đã check
   const [creatingWallet, setCreatingWallet] = useState(false);
+  const [waitingForPayment, setWaitingForPayment] = useState(false);
+
+  // 🚀 WebSocket listener for deposit completion
+  const { connected: wsConnected } = useDepositListener(
+    user?.id || null,
+    currentTransactionId || null,
+    (event) => {
+      console.log('✅ Deposit completed via WebSocket:', event);
+      
+      // Show success notification
+      alert(`Nạp tiền thành công! Số dư mới: ${walletService.formatCurrency(event.newBalance)}`);
+      
+      // Reset modal and reload data
+      resetDepositModal();
+      setWaitingForPayment(false);
+      loadData();
+    }
+  );
 
   useEffect(() => {
     loadData();
   }, []); // Only run once on mount
-
-  // Stop polling function
-  const stopPolling = () => {
-    if (pollingInterval) {
-      clearInterval(pollingInterval);
-      setPollingInterval(null);
-      setIsPolling(false);
-      console.log('🛑 Polling stopped manually');
-    }
-  };
 
   const loadData = async () => {
     try {
@@ -104,61 +111,7 @@ export default function WalletPage() {
     setDepositAmount(value);
   };
 
-  // Polling function to check transaction status
-  const startPollingTransaction = (transactionId: string) => {
-    console.log(`🔄 Starting polling for transaction: ${transactionId}`);
-    
-    let pollCount = 0;
-    const maxPolls = 20; // Maximum 20 polls (1 minute)
-    
-    const interval = setInterval(async () => {
-      try {
-        pollCount++;
-        console.log(`🔍 Polling transaction (${pollCount}/${maxPolls}): ${transactionId}`);
-        
-        const response = await walletService.checkTransaction(transactionId);
-        
-        if (response.success && response.transaction) {
-          const tx = response.transaction;
-          console.log(`📊 Transaction status: ${tx.status}`);
-          
-          if (tx.status === 'completed') {
-            console.log('✅ Transaction completed!');
-            clearInterval(interval);
-            setPollingInterval(null);
-            setIsPolling(false);
-            alert('Nạp tiền thành công! Số dư đã được cập nhật.');
-            resetDepositModal();
-            loadData(); // Reload balance
-            return;
-          } else if (tx.status === 'failed' || tx.status === 'cancelled') {
-            console.log('❌ Transaction failed/cancelled');
-            clearInterval(interval);
-            setPollingInterval(null);
-            setIsPolling(false);
-            alert('Giao dịch thất bại hoặc bị hủy.');
-            resetDepositModal();
-            return;
-          }
-        }
-        
-        // Stop polling after max attempts
-        if (pollCount >= maxPolls) {
-          console.log('⏰ Polling timeout - maximum attempts reached');
-          clearInterval(interval);
-          setPollingInterval(null);
-          setIsPolling(false);
-          alert('Giao dịch đang chờ xử lý. Bạn có thể nhấn "Test Confirm" để test hoặc kiểm tra lại sau.');
-        }
-      } catch (error) {
-        console.error('Error polling transaction:', error);
-        pollCount++; // Count errors too
-      }
-    }, 3000); // Poll every 3 seconds
-    
-    setPollingInterval(interval);
-    setIsPolling(true);
-  };
+
 
   const handleDeposit = async () => {
     const amount = parseFloat(depositAmount) * 1000;
@@ -196,9 +149,11 @@ export default function WalletPage() {
         setQrCode(qrCodeDataURL);
         setDepositStep('qr');
         setShowQRCode(true);
+        setWaitingForPayment(true);
         
-        // Start polling for transaction status
-        startPollingTransaction(response.transactionId);
+        // 🚀 WebSocket sẽ tự động lắng nghe và xử lý khi callback từ MoMo về
+        console.log('💳 Waiting for payment via WebSocket for transaction:', response.transactionId);
+        console.log('🔌 WebSocket connected:', wsConnected);
       } else {
         console.log('No payment URL in response:', response);
         alert('Thanh toán thành công!');
@@ -248,40 +203,6 @@ export default function WalletPage() {
     }
   };
 
-  const handleTestConfirm = async () => {
-    if (!currentTransactionId) {
-      alert('Không có transaction ID');
-      return;
-    }
-
-    try {
-      setProcessing(true);
-      console.log('🧪 Testing confirm deposit:', currentTransactionId);
-      
-      const response = await fetch(`http://localhost:3001/api/v1/payment/test-confirm/${currentTransactionId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-      });
-      
-      const result = await response.json();
-      console.log('Test confirm result:', result);
-      
-      if (result.success) {
-        alert('Test confirm thành công! Số dư đã được cập nhật.');
-        resetDepositModal();
-        loadData(); // Reload balance
-      } else {
-        alert('Test confirm thất bại: ' + result.message);
-      }
-    } catch (error: any) {
-      console.error('Error test confirming:', error);
-      alert('Lỗi test confirm: ' + error.message);
-    } finally {
-      setProcessing(false);
-    }
-  };
-
   const handleConfirmDeposit = async () => {
     if (!currentTransactionId) {
       alert('Không có transaction ID');
@@ -315,6 +236,7 @@ export default function WalletPage() {
     setShowQRCode(false);
     setDepositStep('amount');
     setCurrentTransactionId('');
+    setWaitingForPayment(false);
   };
 
   const handleWithdraw = async () => {
@@ -625,19 +547,51 @@ export default function WalletPage() {
                       <p className="text-sm text-gray-600 mb-4">
                         Quét mã QR bằng ứng dụng MoMo để thanh toán
                       </p>
-                      <p className="text-xs text-gray-500 mb-4">
-                        Hệ thống sẽ tự động cập nhật số dư khi thanh toán thành công
-                      </p>
+                      
+                      {/* WebSocket Status Indicator */}
+                      <div className={`mb-4 p-3 rounded-lg ${
+                        wsConnected && waitingForPayment
+                          ? 'bg-green-50 border border-green-200'
+                          : 'bg-yellow-50 border border-yellow-200'
+                      }`}>
+                        <div className="flex items-center justify-center gap-2">
+                          {wsConnected && waitingForPayment ? (
+                            <>
+                              <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                              <span className="text-sm font-medium text-green-700">
+                                🔌 Đang lắng nghe thanh toán...
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="inline-block w-2 h-2 bg-yellow-500 rounded-full"></span>
+                              <span className="text-sm font-medium text-yellow-700">
+                                ⏳ Đang kết nối...
+                              </span>
+                            </>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-600 mt-1">
+                          Hệ thống sẽ tự động cập nhật khi thanh toán thành công
+                        </p>
+                      </div>
+
                       <div className="space-y-2">
                         <div className="flex gap-2">
                           <button
                             onClick={() => setDepositStep('amount')}
-                            className="flex-1 bg-gray-200 text-gray-800 font-semibold py-2 px-4 rounded-lg"
+                            disabled={waitingForPayment}
+                            className="flex-1 bg-gray-200 text-gray-800 font-semibold py-2 px-4 rounded-lg disabled:opacity-50"
                           >
                             Quay lại
                           </button>
+                          <button
+                            onClick={resetDepositModal}
+                            className="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-lg"
+                          >
+                            Đóng
+                          </button>
                         </div>
-                        {/* Nút dừng polling đã được gỡ để tránh thao tác thủ công */}
                       </div>
                     </div>
                   </div>

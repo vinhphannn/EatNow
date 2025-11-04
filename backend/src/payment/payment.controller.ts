@@ -1,8 +1,9 @@
-import { Controller, Post, Body, Get, Param, Req, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Req, UseGuards, Inject, forwardRef } from '@nestjs/common';
 import { MomoService } from './momo.service';
 import { WalletService } from '../wallet/wallet.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Logger } from '@nestjs/common';
+import { OptimizedNotificationGateway } from '../notification/optimized-notification.gateway';
 
 /**
  * Payment Controller - Xử lý thanh toán qua MoMo và các providers khác
@@ -11,7 +12,7 @@ import { Logger } from '@nestjs/common';
  * - POST /payment/deposit - Nạp tiền vào ví qua MoMo
  * - POST /payment/withdraw - Rút tiền từ ví ra MoMo
  * - POST /payment/order - Thanh toán đơn hàng
- * - POST /payment/callback - MoMo callback handler
+ * - POST /payment/callback - MoMo callback handler (with WebSocket notification)
  * - GET /payment/:transactionId - Lấy thông tin giao dịch
  */
 @Controller('payment')
@@ -21,6 +22,8 @@ export class PaymentController {
   constructor(
     private readonly momoService: MomoService,
     private readonly walletService: WalletService,
+    @Inject(forwardRef(() => OptimizedNotificationGateway))
+    private readonly notificationGateway: OptimizedNotificationGateway,
   ) {}
 
   /**
@@ -224,30 +227,6 @@ export class PaymentController {
     }
   }
 
-  @Post('test-confirm/:transactionId')
-  @UseGuards(JwtAuthGuard)
-  async testConfirmDeposit(@Param('transactionId') transactionId: string) {
-    try {
-      this.logger.log(`🧪 Test confirm deposit: ${transactionId}`);
-      
-      await this.walletService.confirmDeposit(
-        transactionId,
-        `test_${Date.now()}`,
-        { test: true }
-      );
-      
-      this.logger.log(`✅ Test deposit confirmed: ${transactionId}`);
-      
-      return { 
-        success: true, 
-        message: 'Test deposit confirmed successfully',
-        transactionId
-      };
-    } catch (error) {
-      this.logger.error(`❌ Test confirm failed: ${error.message}`, error.stack);
-      return { success: false, message: error.message };
-    }
-  }
   @Post('momo/callback')
   async momoCallback(@Body() callbackData: any) {
     try {
@@ -262,11 +241,12 @@ export class PaymentController {
 
       const { orderId, amount, extraData, resultCode } = callbackData;
 
-      // Parse extraData để lấy transactionId
+      // Parse extraData để lấy transactionId và userId
       const parsedData = JSON.parse(extraData || '{}');
       const transactionId = parsedData.transactionId || orderId;
+      const ownerType = parsedData.ownerType || 'customer';
 
-      this.logger.log(`🔄 Processing callback for transactionId: ${transactionId}, amount: ${amount}`);
+      this.logger.log(`[object Object]Id: ${transactionId}, amount: ${amount}`);
 
       if (Number(resultCode) === 0) {
         // Update transaction status to completed
@@ -275,13 +255,65 @@ export class PaymentController {
           callbackData.transactionId || orderId,
           callbackData
         );
+        
         this.logger.log(`✅ Transaction confirmed: ${transactionId}`);
+        
+        // 🚀 Emit WebSocket event to notify user
+        try {
+          const transaction = await this.walletService.getTransactionById(transactionId);
+          if (transaction) {
+            const userId = transaction.userId?.toString();
+            
+            if (userId) {
+              // Get updated wallet balance
+              const wallet = await this.walletService.getWalletForActor(ownerType as any, userId);
+              
+              // Notify via WebSocket
+              await this.notificationGateway.notifyDepositCompleted(userId, {
+                transactionId,
+                amount: transaction.amount,
+                newBalance: wallet.balance,
+                providerTransactionId: callbackData.transactionId,
+              });
+              
+              this.logger.log(`📡 WebSocket notification sent to user ${userId}`);
+            }
+          }
+        } catch (wsError) {
+          this.logger.error(`⚠️ Failed to send WebSocket notification: ${wsError.message}`);
+          // Don't fail the callback if WebSocket fails
+        }
+        
         return { success: true, message: 'Payment processed successfully' };
       } else {
         // Đánh dấu thất bại/cancelled và hoàn pendingBalance
         const status = Number(resultCode) === 1006 ? 'cancelled' : 'failed';
         await this.walletService.updateTransactionStatus(transactionId, status);
+        
         this.logger.warn(`⚠️ Transaction ${transactionId} marked as ${status} (resultCode=${resultCode})`);
+        
+        // 🚀 Emit WebSocket event for failed payment
+        try {
+          const transaction = await this.walletService.getTransactionById(transactionId);
+          if (transaction) {
+            const userId = transaction.userId?.toString();
+            
+            if (userId) {
+              await this.notificationGateway.notifyPaymentStatusUpdate(userId, {
+                transactionId,
+                status: status as any,
+                amount: transaction.amount,
+                type: transaction.type,
+                message: status === 'cancelled' ? 'Thanh toán đã bị hủy' : 'Thanh toán thất bại',
+              });
+              
+              this.logger.log(`📡 WebSocket failure notification sent to user ${userId}`);
+            }
+          }
+        } catch (wsError) {
+          this.logger.error(`⚠️ Failed to send WebSocket notification: ${wsError.message}`);
+        }
+        
         return { success: false, message: 'Payment failed', resultCode };
       }
 
@@ -457,8 +489,7 @@ export class PaymentController {
    */
   @Get('transaction/:transactionId')
   @UseGuards(JwtAuthGuard)
-  async getTransaction(@Param('transactionId') transactionId: string, @Req() req: any) {
-    const userId = req.user.id;
+  async getTransaction(@Param('transactionId') transactionId: string) {
     
     // TODO: Implement get transaction logic
     return {

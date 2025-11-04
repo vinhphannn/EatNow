@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { CustomerNavBar } from "../../components";
+import { FavoritesProvider } from '@/contexts/FavoritesContext';
 import { useCustomerAuth } from "@/contexts/AuthContext";
 import { DeliveryAddressProvider, useDeliveryAddress } from "@/contexts/DeliveryAddressContext";
 import { usePathname, useRouter } from "next/navigation";
@@ -109,7 +110,8 @@ export default function CustomerLayout({ children }: { children: ReactNode }) {
 
     return (
         <DeliveryAddressProvider>
-            <LocationInitializer>
+            <FavoritesProvider>
+                <LocationInitializer>
                 <div className="min-h-screen bg-gray-50">
                     {pathname !== '/customer/login' && pathname !== '/customer/register' && 
                      pathname !== '/customer/profile' && pathname !== '/customer/orders' && 
@@ -120,6 +122,7 @@ export default function CustomerLayout({ children }: { children: ReactNode }) {
                      !pathname.startsWith('/customer/restaurants/') && <BottomNavBar />}
                 </div>
             </LocationInitializer>
+            </FavoritesProvider>
         </DeliveryAddressProvider>
     );
 }

@@ -1251,6 +1251,133 @@ export class OptimizedNotificationGateway implements OnGatewayConnection, OnGate
     }
   }
 
+  /**
+   * Notify payment status update via WebSocket
+   * Gửi thông báo khi trạng thái thanh toán thay đổi
+   */
+  async notifyPaymentStatusUpdate(userId: string, transactionData: {
+    transactionId: string;
+    status: 'pending' | 'completed' | 'failed' | 'cancelled';
+    amount: number;
+    type: string;
+    message?: string;
+    metadata?: any;
+  }) {
+    try {
+      console.log(`💳 Notifying payment status update for user ${userId}:`, transactionData);
+      
+      const userRoom = `user:${userId}`;
+      const roomSize = this.server.sockets.adapter.rooms.get(userRoom)?.size || 0;
+      
+      if (roomSize > 0) {
+        console.log(`✅ User ${userId} is online (${roomSize} connections), sending payment update`);
+        
+        // Emit payment status update event
+        this.server.to(userRoom).emit('payment_status_update:v1', {
+          type: 'payment_status_update',
+          transactionId: transactionData.transactionId,
+          status: transactionData.status,
+          amount: transactionData.amount,
+          transactionType: transactionData.type,
+          message: transactionData.message || this.getPaymentStatusMessage(transactionData.status),
+          metadata: transactionData.metadata,
+          timestamp: new Date().toISOString(),
+        });
+        
+        console.log(`📡 Event 'payment_status_update:v1' sent to room '${userRoom}'`);
+      } else {
+        console.log(`⚠️ User ${userId} is offline, payment notification saved to database`);
+      }
+      
+    } catch (error) {
+      console.error(`❌ Failed to notify payment status update for user ${userId}:`, error);
+    }
+  }
+
+  /**
+   * Notify deposit completed
+   * Gửi thông báo khi nạp tiền thành công
+   */
+  async notifyDepositCompleted(userId: string, transactionData: {
+    transactionId: string;
+    amount: number;
+    newBalance: number;
+    providerTransactionId?: string;
+  }) {
+    try {
+      console.log(`💰 Notifying deposit completed for user ${userId}:`, transactionData);
+      
+      const userRoom = `user:${userId}`;
+      const roomSize = this.server.sockets.adapter.rooms.get(userRoom)?.size || 0;
+      
+      if (roomSize > 0) {
+        console.log(`✅ User ${userId} is online, sending deposit completion`);
+        
+        // Emit deposit completed event
+        this.server.to(userRoom).emit('deposit_completed:v1', {
+          type: 'deposit_completed',
+          transactionId: transactionData.transactionId,
+          amount: transactionData.amount,
+          newBalance: transactionData.newBalance,
+          providerTransactionId: transactionData.providerTransactionId,
+          message: `Nạp tiền thành công ${transactionData.amount.toLocaleString('vi-VN')} VND`,
+          timestamp: new Date().toISOString(),
+        });
+        
+        console.log(`📡 Event 'deposit_completed:v1' sent to room '${userRoom}'`);
+      }
+      
+    } catch (error) {
+      console.error(`❌ Failed to notify deposit completed for user ${userId}:`, error);
+    }
+  }
+
+  /**
+   * Notify withdrawal completed
+   * Gửi thông báo khi rút tiền thành công
+   */
+  async notifyWithdrawalCompleted(userId: string, transactionData: {
+    transactionId: string;
+    amount: number;
+    newBalance: number;
+  }) {
+    try {
+      console.log(`💸 Notifying withdrawal completed for user ${userId}:`, transactionData);
+      
+      const userRoom = `user:${userId}`;
+      const roomSize = this.server.sockets.adapter.rooms.get(userRoom)?.size || 0;
+      
+      if (roomSize > 0) {
+        this.server.to(userRoom).emit('withdrawal_completed:v1', {
+          type: 'withdrawal_completed',
+          transactionId: transactionData.transactionId,
+          amount: transactionData.amount,
+          newBalance: transactionData.newBalance,
+          message: `Rút tiền thành công ${transactionData.amount.toLocaleString('vi-VN')} VND`,
+          timestamp: new Date().toISOString(),
+        });
+        
+        console.log(`📡 Event 'withdrawal_completed:v1' sent to room '${userRoom}'`);
+      }
+      
+    } catch (error) {
+      console.error(`❌ Failed to notify withdrawal completed for user ${userId}:`, error);
+    }
+  }
+
+  /**
+   * Get payment status message in Vietnamese
+   */
+  private getPaymentStatusMessage(status: string): string {
+    const statusMessages = {
+      'pending': 'Đang xử lý thanh toán...',
+      'completed': 'Thanh toán thành công',
+      'failed': 'Thanh toán thất bại',
+      'cancelled': 'Thanh toán đã bị hủy',
+    };
+    return statusMessages[status] || 'Trạng thái thanh toán đã được cập nhật';
+  }
+
   // Send pending notifications when restaurant comes online
   private async sendPendingNotifications(restaurantId: string) {
     if (!this.offlineNotifications) return;

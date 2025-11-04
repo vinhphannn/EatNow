@@ -123,7 +123,7 @@ export class RestaurantService {
     if (filter?.status) (q as any).status = filter.status;
     const docs = await this.restaurantModel
       .find(q, { name: 1, status: 1, ownerUserId: 1, createdAt: 1 })
-      .sort({ createdAt: -1 })
+      .sort({ isOpen: -1, createdAt: -1 })
       .limit(200)
       .lean();
     return docs.map((d: any) => ({ id: String(d._id), name: d.name, status: d.status, ownerUserId: d.ownerUserId, createdAt: d.createdAt }));
@@ -224,19 +224,19 @@ export class RestaurantService {
         longitude: 1,
       });
       if (main === 'highRated') {
-        query = query.sort({ rating: -1, createdAt: -1 });
+        query = query.sort({ isOpen: -1, rating: -1, createdAt: -1 });
       } else if (main === 'bestSellers') {
         // Fallback: use reviewCount/popularity if available
-        query = query.sort({ popularityScore: -1, reviewCount: -1, createdAt: -1 } as any);
+        query = query.sort({ isOpen: -1, popularityScore: -1, reviewCount: -1, createdAt: -1 } as any);
       } else if (main === 'trending') {
-        query = query.sort({ updatedAt: -1, createdAt: -1 });
+        query = query.sort({ isOpen: -1, updatedAt: -1, createdAt: -1 });
       } else if (main === 'new') {
-        query = query.sort({ createdAt: -1 });
+        query = query.sort({ isOpen: -1, createdAt: -1 });
       } else if (main === 'discount') {
         // Placeholder: no discount field; fallback to recent active
-        query = query.sort({ createdAt: -1 });
+        query = query.sort({ isOpen: -1, createdAt: -1 });
       } else {
-        query = query.sort({ createdAt: -1 });
+        query = query.sort({ isOpen: -1, createdAt: -1 });
       }
       const restaurants = await query.limit(limit).lean();
       result.push({

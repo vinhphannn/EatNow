@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faStar, faTruck, faStore } from "@fortawesome/free-solid-svg-icons";
+import { FavoriteButton } from "../favorites/FavoriteButton";
 
 export interface RestaurantCardProps {
   restaurant: {
@@ -54,6 +55,7 @@ export function RestaurantCard({
     >
       {/* Image Section */}
       <div className="h-48 bg-gray-100 flex items-center justify-center overflow-hidden relative">
+        <FavoriteButton restaurantId={restaurantId} />
         {restaurant.imageUrl ? (
           <img
             src={restaurant.imageUrl}
